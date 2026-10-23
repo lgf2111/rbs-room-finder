@@ -724,6 +724,38 @@ function shouldRevealNativeOnFailure(check) {
   return check ? check.ok === false : false;
 }
 
+/**
+ * Filter rooms based on capacity and equipment rules.
+ * When roomType is empty (All rooms), filter out equipment:
+ * - Equipment has capacity 0 AND type is not in facilityTypes list
+ * - Rooms with capacity 0 BUT type in facilityTypes list are kept
+ * @param {Array} rooms parseRooms output
+ * @param {string} roomType selected room type (empty for All rooms)
+ * @param {number} minCapacity minimum capacity filter
+ * @param {Array<string>} facilityTypes list of facility types from #resourceType
+ * @returns {Array} filtered rooms
+ */
+function filterRooms(rooms, roomType, minCapacity, facilityTypes) {
+  if (!Array.isArray(rooms)) return [];
+  return rooms.filter((r) => {
+    // Capacity filter
+    if (r.capacity < minCapacity) return false;
+    
+    // When room type is "All rooms", filter out equipment
+    if (roomType === '') {
+      // Equipment has capacity 0 AND type is not a facility type
+      if (r.capacity === 0 && r.type) {
+        const isFacilityType = facilityTypes.includes(r.type);
+        if (!isFacilityType) {
+          return false; // Filter out equipment
+        }
+      }
+    }
+    
+    return true;
+  });
+}
+
 // --- Self-check for panel.js UI references ---------------------------------
 
 /**
@@ -804,6 +836,7 @@ const RBS_NATIVE = {
   shouldRevealNative,
   shouldRevealNativeOnFailure,
   selfCheck,
+  filterRooms,
 };
 
 // Expose each on globalThis for the content script / panel.js.

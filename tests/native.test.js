@@ -423,3 +423,37 @@ test('selfCheck on one missing typeSelect → {ok:false, missing:["typeSelect"]}
   assert.equal(result.ok, false);
   assert.deepEqual(result.missing, ['typeSelect']);
 });
+
+// 21. Equipment filter
+test('equipment filter removes capacity-0 non-facility types when roomType is empty', () => {
+  const rooms = [
+    // Real room with capacity > 0
+    { id: '1', name: 'Room1', type: 'Discussion Room', capacity: 10 },
+    // Equipment with capacity 0 and non-facility type
+    { id: '2', name: 'Equipment1', type: 'Projector', capacity: 0 },
+    // Another equipment
+    { id: '3', name: 'Equipment2', type: 'Whiteboard', capacity: 0 },
+    // Real room with capacity 0 but facility type (should NOT be filtered)
+    { id: '4', name: 'Room2', type: 'Discussion Room', capacity: 0 },
+    // Room with no type (should not be filtered as equipment)
+    { id: '5', name: 'Room3', type: '', capacity: 0 },
+  ];
+  
+  const facilityTypes = ['Discussion Room', 'Lecture Theatre', 'Lab'];
+  
+  // Test with roomType = '' (All rooms)
+  const filtered = native.filterRooms(rooms, '', 0, facilityTypes);
+  
+  // Should keep rooms 1, 4, and 5; filter out 2 and 3
+  // Room 5 has no type, so not considered equipment (needs type to be equipment)
+  assert.equal(filtered.length, 3);
+  assert.equal(filtered[0].id, '1');
+  assert.equal(filtered[1].id, '4');
+  assert.equal(filtered[2].id, '5');
+  
+  // Test with minCapacity = 5
+  const filteredCapacity = native.filterRooms(rooms, '', 5, facilityTypes);
+  // Should keep only room 1 (capacity 10)
+  assert.equal(filteredCapacity.length, 1);
+  assert.equal(filteredCapacity[0].id, '1');
+});

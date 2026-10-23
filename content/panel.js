@@ -34,6 +34,7 @@
     NATIVE_HIDE_SELECTORS,
     shouldRevealNativeOnFailure,
     rangeToWindow,
+    filterRooms,
   } = N;
 
   // Global UI references
@@ -268,13 +269,13 @@
     
     const main = el('div', { class: 'rbs-main' });
     const boardArea = el('div', { class: 'rbs-board-area' });
-    const boardHeader = el('div', { class: 'rbs-board-header' });
     const boardScroll = el('div', { class: 'rbs-board-scroll' });
+    const boardHeader = el('div', { class: 'rbs-board-header' });
     const boardRows = el('div', { class: 'rbs-board-rows' });
     
-    boardArea.appendChild(boardHeader);
-    boardArea.appendChild(boardScroll);
+    boardScroll.appendChild(boardHeader);
     boardScroll.appendChild(boardRows);
+    boardArea.appendChild(boardScroll);
     main.appendChild(boardArea);
     host.appendChild(main);
     
@@ -338,6 +339,7 @@
       type: 'number',
       min: '0',
       placeholder: 'Min cap',
+      'aria-label': 'Minimum capacity',
       value: '0'
     });
     topbar.appendChild(el('div', { class: 'rbs-control-group' }, [capInput]));
@@ -478,6 +480,9 @@
       'data-rsrcid': room.id
     });
     
+    // Set grid columns to match header
+    row.style.gridTemplateColumns = `180px repeat(${board.axis.length}, 1fr)`;
+    
     // Room info column
     const roomInfo = el('div', { class: 'rbs-room-info' }, [
       el('span', { class: 'rbs-room-code', text: room.name }),
@@ -487,16 +492,16 @@
     row.appendChild(roomInfo);
     
     // Slot cells (skeleton state)
-    const slotCells = el('div', { class: 'rbs-slot-cells' });
-    slotCells.style.gridTemplateColumns = `repeat(${board.axis.length}, 1fr)`;
-    
     for (let i = 0; i < board.axis.length; i++) {
       const cell = el('div', { class: 'rbs-slot-cell rbs-skel' });
+      // Add hour boundary class for cells before hour marks (odd indices)
+      if (i % 2 === 1) {
+        cell.classList.add('rbs-hour-boundary');
+      }
       cell.addEventListener('click', (e) => onCellClick(room.id, i, e));
-      slotCells.appendChild(cell);
+      row.appendChild(cell);
     }
     
-    row.appendChild(slotCells);
     return row;
   }
 
@@ -516,7 +521,6 @@
       currentUI.boardRows.appendChild(row);
       board.blocks.set(room.id, {
         rowEl: row,
-        cellsEl: row.querySelector('.rbs-slot-cells'),
         cells: Array.from(row.querySelectorAll('.rbs-slot-cell')),
         loaded: false,
         room
@@ -623,6 +627,10 @@
       const slot = aligned[i];
       const label = board.axis[i];
       cell.className = 'rbs-slot-cell';
+      // Add hour boundary class for cells before hour marks (odd indices)
+      if (i % 2 === 1) {
+        cell.classList.add('rbs-hour-boundary');
+      }
       // Dim cells whose START falls outside the chosen window (axis is stable).
       const mins = timeToMinutes(label);
       const outside = mins < startMin || mins >= endMin;
@@ -653,6 +661,7 @@
     const errorEl = ui.errorIndicator?.querySelector('#rbs-error-text');
     if (errorEl) {
       errorEl.textContent = `Failed to load some rooms`;
+      ui.errorIndicator.style.display = 'flex';
     }
   }
 
@@ -708,6 +717,7 @@
     const errorEl = ui.errorIndicator?.querySelector('#rbs-error-text');
     if (errorEl) {
       errorEl.textContent = '';
+      ui.errorIndicator.style.display = 'none';
     }
   }
 
@@ -919,10 +929,11 @@
     const statusbar = el('div', { class: 'rbs-statusbar' });
     const stats = el('div', { class: 'rbs-stats' });
     const errorIndicator = el('div', { class: 'rbs-error-indicator' });
+    errorIndicator.style.display = 'none';
     
     stats.appendChild(el('span', { id: 'rbs-stats-text', text: '0/0 rooms loaded · 0 requests in flight' }));
     errorIndicator.appendChild(el('span', { id: 'rbs-error-text' }));
-    errorIndicator.appendChild(el('span', { class: 'rbs-retry-link', text: 'retry' }));
+    errorIndicator.appendChild(el('button', { class: 'rbs-retry-btn', text: 'retry' }));
     
     statusbar.appendChild(stats);
     statusbar.appendChild(errorIndicator);
@@ -1119,24 +1130,7 @@
     
     // Filter equipment out of "All rooms"
     const roomTypesList = readRoomTypes(); // Read fresh each time
-    const filtered = rooms.filter((r) => {
-      // Capacity filter
-      if (r.capacity < form.minCapacity) return false;
-      
-      // When room type is "All rooms", filter out equipment
-      if (form.roomType === '') {
-        // Equipment has capacity 0 AND type is not a facility type
-        if (r.capacity === 0 && r.type) {
-          // Check if this is a facility type (from #resourceType options)
-          const isFacilityType = roomTypesList.includes(r.type);
-          if (!isFacilityType) {
-            return false; // Filter out equipment
-          }
-        }
-      }
-      
-      return true;
-    });
+    const filtered = filterRooms(rooms, form.roomType, form.minCapacity, roomTypesList);
     
     const ordered = sortRooms(filtered, form.sort);
     

@@ -18,6 +18,7 @@
   --rbs-surface: #14161a;
   --rbs-surface2: #1f2226;
   --rbs-border: #2b2f36;
+  --rbs-border-hour: #3a3f48;
   --rbs-primary-text: #e6e8eb;
   --rbs-muted: #8b9199;
   --rbs-accent: #c8102e; /* SIT red */
@@ -41,6 +42,7 @@
   --rbs-surface: #f8f9fa;
   --rbs-surface2: #e9ecef;
   --rbs-border: #dee2e6;
+  --rbs-border-hour: #ced4da;
   --rbs-primary-text: #212529;
   --rbs-muted: #6c757d;
   --rbs-accent: #0d6efd;
@@ -170,6 +172,9 @@
   background: var(--rbs-accent);
   color: white;
   border-color: var(--rbs-accent);
+  font-weight: 600;
+  outline: 2px solid var(--rbs-accent);
+  outline-offset: -1px;
 }
 
 .rbs-date-weekday {
@@ -189,7 +194,7 @@
 }
 
 .rbs-window-select {
-  width: 80px;
+  width: 88px;
 }
 
 .rbs-topbar-actions {
@@ -207,6 +212,8 @@
   font-size: 12px;
   cursor: pointer;
   min-height: 28px;
+  white-space: nowrap;
+  min-width: 60px;
 }
 
 .rbs-action-btn:hover {
@@ -259,8 +266,7 @@
 
 .rbs-board-scroll {
   flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: auto;
 }
 
 .rbs-board-rows {
@@ -318,6 +324,10 @@
 .rbs-slot-cell {
   height: 100%;
   border-right: 1px solid var(--rbs-border);
+}
+
+.rbs-slot-cell.rbs-hour-boundary {
+  border-right-color: var(--rbs-border-hour);
 }
 
 .rbs-slot-cell.rbs-free {
@@ -479,6 +489,8 @@
   font-size: 11px;
   color: var(--rbs-muted);
   flex-shrink: 0;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .rbs-stats {
@@ -493,10 +505,16 @@
   gap: 4px;
 }
 
-.rbs-retry-link {
+.rbs-retry-btn {
+  background: none;
+  border: none;
   color: var(--rbs-accent);
   cursor: pointer;
   text-decoration: underline;
+  font-family: inherit;
+  font-size: inherit;
+  padding: 0;
+  margin: 0;
 }
 
 /* Fallback banner */
@@ -548,7 +566,7 @@
 }
 
 /* Responsive */
-@media (max-width: 1100px) {
+@media (max-width: 1279px) {
   .rbs-topbar {
     flex-wrap: wrap;
     height: auto;
