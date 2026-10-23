@@ -20,43 +20,73 @@ const fixtureHtml = fs.readFileSync(
   'utf8'
 );
 
-test('parseResults returns the unique rooms with correct names and integer capacities', () => {
+test('parseResults parses the real Bootstrap-card fixture into exactly 4 rooms', () => {
   const rooms = parseResults(fixtureHtml);
 
-  // 3 rooms with full+badge, 1 anchor-only room = 4 unique rooms.
+  // The live card shape: div.resourceName "NAME/TYPE" + a following "Capacity: N".
   assert.equal(rooms.length, 4);
 
-  const byName = Object.fromEntries(rooms.map((r) => [r.name, r.capacity]));
-  assert.deepEqual(byName, {
-    'E2-05-12': 81,
-    'SR-03-07': 40,
-    'DR-01-02': 8,
-    'DR-01-05': 12,
-  });
+  // Document order is preserved and the shape is {name, room, type, capacity}.
+  assert.deepEqual(rooms, [
+    { name: 'E2-03-07-DR209/Discussion Room', room: 'E2-03-07-DR209', type: 'Discussion Room', capacity: 8 },
+    { name: 'E2-03-08-DR210/Discussion Room', room: 'E2-03-08-DR210', type: 'Discussion Room', capacity: 8 },
+    { name: 'E2-03-19-DR215/Discussion Room', room: 'E2-03-19-DR215', type: 'Discussion Room', capacity: 8 },
+    { name: 'E2-03-20-DR216/Discussion Room', room: 'E2-03-20-DR216', type: 'Discussion Room', capacity: 8 },
+  ]);
 
-  // Capacities are integers.
+  // Capacities are integers and no name carries "Capacity:".
   for (const r of rooms) {
     assert.equal(Number.isInteger(r.capacity), true, `${r.name} capacity is integer`);
-  }
-
-  // No entry's name may contain "Capacity:".
-  for (const r of rooms) {
     assert.equal(/Capacity:/i.test(r.name), false, `name "${r.name}" has no Capacity:`);
   }
 });
 
-test('duplicate rows (full row + bare badge fragment) collapse to one room', () => {
-  // Craft one full row plus its bare badge fragment for the SAME room.
+test('card parser pairs each resourceName with the capacity that follows it', () => {
+  const html = `
+    <div class="card-body"><div class="resourceName">AAA-1/Seminar Room</div>
+      <div><i></i> Capacity: 25</div></div>
+    <div class="card-body"><div class="resourceName">BBB-2/Seminar Room</div>
+      <div><i></i> Capacity: 40</div></div>
+  `;
+  const rooms = parseResults(html);
+  assert.deepEqual(
+    rooms.map((r) => [r.room, r.type, r.capacity]),
+    [
+      ['AAA-1', 'Seminar Room', 25],
+      ['BBB-2', 'Seminar Room', 40],
+    ]
+  );
+});
+
+test('duplicate cards for the same room collapse to one room (dedupe by room code)', () => {
+  const html = `
+    <div class="card-body"><div class="resourceName">LT-1A/Lecture Theatre</div>
+      <div> Capacity: 120</div></div>
+    <div class="card-body"><div class="resourceName">LT-1A/Lecture Theatre</div>
+      <div> Capacity: 120</div></div>
+  `;
+  const rooms = parseResults(html);
+  assert.equal(rooms.length, 1);
+  assert.equal(rooms[0].room, 'LT-1A');
+  assert.equal(rooms[0].type, 'Lecture Theatre');
+  assert.equal(rooms[0].capacity, 120);
+});
+
+test('inline text/table-row shape still works as a fallback', () => {
+  // No cards present -> fall back to inline "NAME/TYPE Capacity: N" rows.
   const html = `
     <table>
-      <tr><td><span>LT-1A/Lecture Theatre Capacity: 120 Main Hall</span></td></tr>
-      <tr><td><span>Capacity: 120</span></td></tr>
+      <tr><td><span>SR-03-07/Seminar Room Capacity: 40 Seminar Room A</span></td></tr>
     </table>
   `;
   const rooms = parseResults(html);
   assert.equal(rooms.length, 1);
-  assert.equal(rooms[0].name, 'LT-1A');
-  assert.equal(rooms[0].capacity, 120);
+  assert.deepEqual(rooms[0], {
+    name: 'SR-03-07/Seminar Room',
+    room: 'SR-03-07',
+    type: 'Seminar Room',
+    capacity: 40,
+  });
 });
 
 test('buildSearchPlan returns ordered control mutations with the right option texts', () => {
@@ -126,15 +156,25 @@ test('classifyEmpty distinguishes all-booked from no-such-rooms', () => {
   assert.equal(classifyEmpty({ rowsWithAll: 5, rowsAvailable: 2 }), 'has availability');
 });
 
-test('filterAndSortRooms filters by min capacity and sorts descending', () => {
-  const rooms = parseResults(fixtureHtml);
-  const filtered = filterAndSortRooms(rooms, 10);
+test('filterAndSortRooms drops rooms below min capacity', () => {
+  const rooms = parseResults(fixtureHtml); // 4 rooms, all capacity 8
+  assert.equal(filterAndSortRooms(rooms, 10).length, 0);
+  assert.equal(filterAndSortRooms(rooms, 8).length, 4);
+});
+
+test('filterAndSortRooms sorts by capacity descending, then room code', () => {
+  const rooms = [
+    { name: 'C-3/Room', room: 'C-3', type: 'Room', capacity: 10 },
+    { name: 'A-1/Room', room: 'A-1', type: 'Room', capacity: 50 },
+    { name: 'B-2/Room', room: 'B-2', type: 'Room', capacity: 10 },
+  ];
+  const sorted = filterAndSortRooms(rooms, 0);
   assert.deepEqual(
-    filtered.map((r) => r.name),
-    ['E2-05-12', 'SR-03-07', 'DR-01-05']
-  );
-  assert.deepEqual(
-    filtered.map((r) => r.capacity),
-    [81, 40, 12]
+    sorted.map((r) => [r.room, r.capacity]),
+    [
+      ['A-1', 50],
+      ['B-2', 10],
+      ['C-3', 10],
+    ]
   );
 });

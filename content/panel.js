@@ -105,14 +105,20 @@
   }
 
   // Which required native ids are missing?
+  //
+  // Gate on ALL of these. The My Bookings page (/DHB001/DHB001Page) also has
+  // #resourceType, #searchSlotDate and #bookingstatus but NOT the time selects
+  // or the main search button, so a partial check would put a dead panel there.
+  // We deliberately do NOT include #bookingstatus in the gate (it exists on
+  // pages that are not the search page); the time selects + search button are
+  // the distinguishing ids.
   function missingControlIds() {
     const required = [
-      RBS_CONTROL_IDS.resourceType,
-      RBS_CONTROL_IDS.date,
-      RBS_CONTROL_IDS.start,
-      RBS_CONTROL_IDS.end,
-      RBS_CONTROL_IDS.status,
-      RBS_CONTROL_IDS.searchButton,
+      RBS_CONTROL_IDS.resourceType, // resourceType
+      RBS_CONTROL_IDS.date, // searchSlotDate
+      RBS_CONTROL_IDS.start, // SearchHoursFrom
+      RBS_CONTROL_IDS.end, // SearchHoursTo
+      RBS_CONTROL_IDS.searchButton, // btnBookingMainSearch
     ];
     return required.filter((id) => !document.getElementById(id));
   }
@@ -222,29 +228,95 @@
     return { trusted: afterMismatch.length === 0, mismatched: afterMismatch, html };
   }
 
-  // Select a room's native checkbox and scroll the booking form into view.
-  // Never auto-submits (rule from spec). Returns true if a checkbox was found.
-  function selectNativeRoom(roomName) {
-    // Find a table row whose text includes "<roomName>/" then its checkbox.
-    const rows = Array.from(document.querySelectorAll('tr'));
-    for (const row of rows) {
-      const txt = (row.textContent || '').replace(/\s+/g, ' ').trim();
-      if (txt.indexOf(roomName + '/') !== -1 || txt.indexOf(roomName + ' ') === 0) {
-        const cb = row.querySelector('input[type="checkbox"]');
-        if (cb) {
-          if (!cb.checked) {
-            cb.checked = true;
-            fireChange(cb);
-          }
-          cb.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          return true;
-        }
+  // Ids / text that must NEVER be clicked by us (they commit a booking).
+  const FORBIDDEN_CLICK_IDS = ['btnBookingSave', 'btnBookingNext', 'btnBookingMainClear'];
+
+  // How long to wait for the "N Facility Selected" badge after a card click.
+  const SELECT_CONFIRM_MS = 2000;
+
+  // Find the card element for a given room code. The live shape is a Bootstrap
+  // card containing a `div.resourceName` whose text is "NAME/TYPE". We match the
+  // card whose resourceName starts with the room code.
+  function findRoomCard(roomCode) {
+    const code = String(roomCode).trim();
+    const names = Array.from(document.querySelectorAll('.resourceName'));
+    for (const nameEl of names) {
+      const txt = (nameEl.textContent || '').replace(/\s+/g, ' ').trim();
+      const before = txt.split('/')[0].trim();
+      if (before === code || txt.indexOf(code) === 0) {
+        // The clickable card is the nearest card ancestor (fall back to a row
+        // or the name element's container).
+        return (
+          nameEl.closest('.card-body') ||
+          nameEl.closest('.card') ||
+          nameEl.closest('.row') ||
+          nameEl.parentElement ||
+          nameEl
+        );
       }
     }
-    // Fallback: scroll the search button / form region into view.
-    const btn = document.getElementById(RBS_CONTROL_IDS.searchButton);
-    if (btn) btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return false;
+    return null;
+  }
+
+  // True if the page currently shows a "N Facility Selected" badge.
+  function hasSelectionBadge() {
+    const all = document.body ? document.body.textContent || '' : '';
+    return /\d+\s+Facilit(?:y|ies)\s+Selected/i.test(all);
+  }
+
+  // Scroll the native action bar / selection badge into view (whichever exists)
+  // so the user can see the real Book control. Never clicks it.
+  function scrollActionBarIntoView() {
+    const save = document.getElementById('btnBookingSave');
+    const next = document.getElementById('btnBookingNext');
+    let anchor = save || next || null;
+    if (!anchor) {
+      // Find the element carrying the selection badge text.
+      const candidates = Array.from(
+        document.querySelectorAll('span, div, button, a, label')
+      );
+      anchor = candidates.find((n) =>
+        /\d+\s+Facilit(?:y|ies)\s+Selected/i.test((n.textContent || '').trim())
+      );
+    }
+    if (anchor && typeof anchor.scrollIntoView === 'function') {
+      anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+
+  // Select a room by CLICKING its card (the live site has no checkbox), then
+  // bring the native action bar into view. NEVER clicks Book/Next/Clear or any
+  // submit. Resolves {ok, reason}; ok is true only if the selection badge
+  // appeared within SELECT_CONFIRM_MS.
+  async function selectRoom(roomCode) {
+    const card = findRoomCard(roomCode);
+    if (!card) {
+      return { ok: false, reason: 'card-not-found' };
+    }
+
+    // Guard: never dispatch a click on a forbidden submit control.
+    const forbidden = FORBIDDEN_CLICK_IDS.some(
+      (id) => card.id === id || card.querySelector('#' + id) === card
+    );
+    if (forbidden) {
+      return { ok: false, reason: 'refused-forbidden-target' };
+    }
+
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    card.click();
+
+    // Poll for the "N Facility Selected" badge for up to SELECT_CONFIRM_MS.
+    // The badge appearing is our only trusted confirmation the click took.
+    const deadline = Date.now() + SELECT_CONFIRM_MS;
+    while (Date.now() < deadline) {
+      await sleep(150);
+      if (hasSelectionBadge()) {
+        scrollActionBarIntoView();
+        return { ok: true };
+      }
+    }
+    return { ok: false, reason: 'no-badge' };
   }
 
   // ---- storage --------------------------------------------------------------
@@ -325,6 +397,7 @@
 .rbs-book-btn:hover{background:#2a6f97;color:#fff}
 .rbs-book-note{margin-top:8px;padding:9px 10px;border-radius:8px;background:#fff6e5;color:#8a5a00;font-size:12px;display:none}
 .rbs-book-note.rbs-visible{display:block}
+.rbs-book-note.rbs-error{background:#fdecea;color:#8a1c13}
 .rbs-launcher{position:fixed;bottom:22px;right:22px;z-index:2147483000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
 .rbs-launcher a{display:inline-flex;align-items:center;gap:8px;background:#2a6f97;color:#fff;text-decoration:none;font-size:13px;font-weight:600;padding:10px 16px;border-radius:999px;box-shadow:0 8px 22px rgba(16,24,40,.22)}
 .rbs-launcher a:hover{background:#1b4965}
@@ -439,31 +512,59 @@
     ui.statusBox.textContent = '';
   }
 
-  function showBookNote() {
-    ui.bookNote.className = 'rbs-book-note rbs-visible';
-    ui.bookNote.textContent = 'Confirm on the form below \u2014 nothing is booked until you submit.';
+  function showBookNote(kind, text) {
+    ui.bookNote.className = 'rbs-book-note rbs-visible' + (kind ? ' rbs-' + kind : '');
+    ui.bookNote.textContent = text;
   }
 
   function renderResults(rooms, windowLabel) {
     ui.resultsBox.textContent = '';
     for (const room of rooms) {
+      // Display name/room code; prefer the explicit room code when present.
+      const displayName = room.room || room.name;
+      const bookBtn = el('button', { class: 'rbs-book-btn', text: 'Book' });
       const card = el('div', { class: 'rbs-card' }, [
         el('div', { class: 'rbs-card-main' }, [
-          el('div', { class: 'rbs-card-name', text: room.name }),
+          el('div', { class: 'rbs-card-name', text: displayName }),
           el('div', { class: 'rbs-card-meta' }, [
             el('span', { class: 'rbs-cap-pill', text: 'cap ' + room.capacity }),
             document.createTextNode('free ' + windowLabel),
           ]),
         ]),
-        el('button', {
-          class: 'rbs-book-btn',
-          text: 'Book',
-          onclick: () => {
-            selectNativeRoom(room.name);
-            showBookNote();
-          },
-        }),
+        bookBtn,
       ]);
+
+      bookBtn.addEventListener('click', async () => {
+        bookBtn.disabled = true;
+        showBookNote('', 'Selecting ' + displayName + ' on the native page\u2026');
+        try {
+          const res = await selectRoom(room.room || room.name);
+          if (res.ok) {
+            showBookNote(
+              '',
+              '1 Facility Selected \u2014 confirm Book below; nothing is booked ' +
+                'until you click Book.'
+            );
+          } else if (res.reason === 'card-not-found') {
+            showBookNote(
+              'error',
+              'Could not find ' + displayName + ' on the page. Scroll the native ' +
+                'results and click the room card yourself.'
+            );
+          } else {
+            showBookNote(
+              'error',
+              'The selection did not take (no “Facility Selected” badge appeared). ' +
+                'Click the ' + displayName + ' card on the native page yourself.'
+            );
+          }
+        } catch (e) {
+          showBookNote('error', 'Selection failed: ' + (e && e.message ? e.message : String(e)));
+        } finally {
+          bookBtn.disabled = false;
+        }
+      });
+
       ui.resultsBox.appendChild(card);
     }
   }

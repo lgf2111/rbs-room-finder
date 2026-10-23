@@ -39,13 +39,19 @@ pick (start to end), not merely for part of it. The panel states this inline.
 
 ## Booking is always manual
 
-The **Book** button only selects the room in the native list and scrolls the
-real RBS booking form into view, with the note:
+RBS results are Bootstrap cards with no per-room checkbox; selection happens by
+**clicking the room card**. So the panel's **Book** button finds that room's
+card on the native page, scrolls it into view, clicks it to select the room,
+and then scrolls the native action bar (the real **Book** / **Next** control and
+the "1 Facility Selected" badge) into view, with the note:
 
-> Confirm on the form below — nothing is booked until you submit.
+> 1 Facility Selected — confirm Book below; nothing is booked until you click Book.
 
-The extension never auto-submits a booking. Nothing is reserved until you
-complete and submit the native RBS form yourself.
+You must click the native **Book** button yourself to reserve anything. The
+extension never clicks `btnBookingSave`, `btnBookingNext`, `btnBookingMainClear`
+or any submit, and never auto-submits a booking. If the "Facility Selected"
+badge does not appear within ~2 seconds of the click, the panel tells you the
+selection did not take rather than claiming success.
 
 ## No credentials, no network calls of its own
 
@@ -80,12 +86,23 @@ obeys these rules, which must not be weakened:
    so it sets them again and only then clicks.
 3. After results render it re-reads the selectors. If they no longer show the
    requested window, the result is marked untrusted in the UI rather than shown.
-4. Results come in two row shapes — a full row like
-   `E2-05-12/ICT Laboratory Capacity: 81 Name` and a bare `Capacity: 81` badge
-   fragment. It filters to rows containing both a `/` and `Capacity:` **before**
-   deduping by room name, so counts and names stay correct.
-5. The "No resources with available time slots found" toast persists across
-   searches, so the verdict is decided from the row count, never the toast.
+4. Results on the live site are Bootstrap cards: the room name lives in
+   `div.resourceName` as `NAME/TYPE` and the capacity lives in a following
+   sibling as `Capacity: N`. The parser pairs each `resourceName` with the next
+   `Capacity: N`, splits `NAME/TYPE` on the first `/` into `room` and `type`,
+   and dedupes by the `room` code. An older single-string row shape
+   (`NAME/TYPE Capacity: N` in one text node) is kept working as a fallback for
+   text-only captures, but the card path is primary. No name ever carries
+   `Capacity:`.
+5. `#resourceType` is a select2 widget — the visible element is a rendered span
+   and the real `<select>` is hidden and re-initialised after every postback.
+   The driver sets the hidden `<select>` and dispatches a bubbling `change`, and
+   **re-queries the element on every step** rather than caching it. Option
+   values are matched by their visible text (never by position): `#resourceType`
+   values are GUIDs, and `#SearchHoursFrom` starts at `00:00`, so "first option"
+   is never assumed to be a particular time.
+6. The "No resources with available time slots found" toast persists across
+   searches, so the verdict is decided from the room count, never the toast.
 
 ## Design notes / decisions
 
@@ -95,6 +112,12 @@ obeys these rules, which must not be weakened:
   of the current page to `chrome.storage.local` under `rbsProbe`, and the popup
   reads it. This avoids the `scripting` permission that `executeScript` would
   require, keeping the permission set minimal as specified.
+- **Panel injection gate.** The full search panel is injected only when ALL of
+  `#resourceType`, `#searchSlotDate`, `#SearchHoursFrom`, `#SearchHoursTo` and
+  `#btnBookingMainSearch` are present. Other pages on the RBS origin (e.g. My
+  Bookings at `/DHB001/DHB001Page`, which has `#resourceType` and
+  `#searchSlotDate` but not the time selects or the search button) get only the
+  launcher button, so no dead panel appears off the search page.
 - **Shadow-root styling.** `content/panel.css` is listed in the manifest for
   completeness, but the panel and launcher live in shadow roots, so panel.js
   also injects an equivalent stylesheet string (`PANEL_CSS`) directly into each

@@ -166,25 +166,48 @@ function normalizeText(s) {
 }
 
 /**
- * Parse a single candidate row's text into a room record, or null if it is not
- * a real full room row.
+ * Build a full room record from a composed "NAME/TYPE" string and a capacity.
+ * Splits on the FIRST "/": room = before, type = after (both trimmed).
+ * Returns null if the shape is unusable or the name would carry "Capacity:".
  *
- * Rule 4: real rows match /<type> Capacity: N/ and contain BOTH a "/" and
- * "Capacity:". A bare "Capacity: 81" fragment (no "/") is a nested badge and
- * must be rejected BEFORE deduping.
+ * @param {string} nameText  e.g. "E2-03-07-DR209/Discussion Room"
+ * @param {number} capacity
+ * @returns {{name: string, room: string, type: string, capacity: number}|null}
+ */
+function makeRoomRecord(nameText, capacity) {
+  const name = normalizeText(nameText);
+  if (!name) return null;
+  if (name.indexOf('/') === -1) return null;
+  if (!Number.isFinite(capacity)) return null;
+  // Never let a parsed name carry "Capacity:" into the name column.
+  if (/Capacity:/i.test(name)) return null;
+
+  const slash = name.indexOf('/');
+  const room = normalizeText(name.slice(0, slash));
+  const type = normalizeText(name.slice(slash + 1));
+  if (!room) return null;
+
+  return { name, room, type, capacity };
+}
+
+/**
+ * Parse a single candidate row's inline text into a room record, or null.
  *
- * A full row looks like: "E2-05-12/ICT Laboratory Capacity: 81 Name"
- * We take the room name as everything up to the first "/", and the capacity as
- * the integer following "Capacity:".
+ * This is the FALLBACK path for text-only rows where the whole thing lives in
+ * one text node, e.g. "E2-05-12/ICT Laboratory Capacity: 81 Name". The room
+ * name is taken as "NAME/TYPE" up to (but not including) "Capacity:".
+ *
+ * The live site does NOT use this shape (see parseCardsFromHtml), but we keep
+ * it working so text-only captures still parse.
  *
  * @param {string} rawText
- * @returns {{name: string, capacity: number}|null}
+ * @returns {{name: string, room: string, type: string, capacity: number}|null}
  */
 function parseRowText(rawText) {
   const text = normalizeText(rawText);
   if (!text) return null;
 
-  // Must contain both a "/" and "Capacity:" to be a full row (rule 4).
+  // Must contain both a "/" and "Capacity:" to be a full inline row.
   if (text.indexOf('/') === -1) return null;
   const capMatch = /Capacity:\s*(\d+)/.exec(text);
   if (!capMatch) return null;
@@ -192,22 +215,52 @@ function parseRowText(rawText) {
   const capacity = parseInt(capMatch[1], 10);
   if (!Number.isFinite(capacity)) return null;
 
-  // Room name is the token before the first "/".
-  const name = normalizeText(text.split('/')[0]);
-  if (!name) return null;
-
-  // Defensive: never let a parsed name carry "Capacity:" into the name column.
-  if (/Capacity:/i.test(name)) return null;
-
-  return { name, capacity };
+  // "NAME/TYPE" is everything before "Capacity:".
+  const nameText = normalizeText(text.slice(0, capMatch.index));
+  return makeRoomRecord(nameText, capacity);
 }
 
 /**
- * Extract candidate row texts from a results HTML string.
+ * Parse the PRIMARY (live-site) Bootstrap-card shape from an HTML string.
  *
- * In the browser this would walk the live DOM; for portability (Node tests) we
- * accept an HTML string and extract the text of each table row / anchor row.
- * We intentionally gather a superset and let parseRowText() reject non-rows.
+ * Each room is a card where the name lives in `div.resourceName`
+ * ("NAME/TYPE") and the capacity lives in a following sibling element as
+ * "Capacity: N". We locate each `resourceName`, then search the HTML AFTER it
+ * for the first "Capacity: N" (which belongs to that card). Rooms are returned
+ * in document order.
+ *
+ * @param {string} src
+ * @returns {Array<{name:string,room:string,type:string,capacity:number}>}
+ */
+function parseCardsFromHtml(src) {
+  const out = [];
+  // Match the text inside each <div class="... resourceName ...">...</div>.
+  // class attribute may contain other tokens, so match on the token.
+  const nameRe =
+    /<div\b[^>]*class="[^"]*\bresourceName\b[^"]*"[^>]*>([\s\S]*?)<\/div>/gi;
+  let m;
+  while ((m = nameRe.exec(src)) !== null) {
+    const nameText = normalizeText(m[1].replace(/<[^>]*>/g, ' '));
+    if (!nameText || nameText.indexOf('/') === -1) continue;
+
+    // Capacity belongs to this card: the first "Capacity: N" appearing AFTER
+    // this resourceName in document order.
+    const after = src.slice(nameRe.lastIndex);
+    const capMatch = /Capacity:\s*(\d+)/.exec(after);
+    if (!capMatch) continue;
+    const capacity = parseInt(capMatch[1], 10);
+
+    const rec = makeRoomRecord(nameText, capacity);
+    if (rec) out.push(rec);
+  }
+  return out;
+}
+
+/**
+ * Extract candidate inline-row texts (FALLBACK path) from an HTML string.
+ *
+ * Grabs the text of each <tr>...</tr> and standalone <a>...</a>. We gather a
+ * superset and let parseRowText() reject non-rows.
  *
  * @param {string} html
  * @returns {string[]}
@@ -216,7 +269,6 @@ function extractCandidateRowTexts(html) {
   const out = [];
   const src = String(html == null ? '' : html);
 
-  // Grab the inner text of each <tr>...</tr> and each standalone <a>...</a>.
   const stripTags = (chunk) => normalizeText(chunk.replace(/<[^>]*>/g, ' '));
 
   const trRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
@@ -234,36 +286,53 @@ function extractCandidateRowTexts(html) {
 }
 
 /**
- * Parse results HTML into the unique list of rooms.
+ * Dedupe room records by `room` code, preserving first-seen (document) order.
+ * On a collision keep the larger capacity (defensive; should match).
+ * @param {Array} records
+ * @returns {Array}
+ */
+function dedupeRooms(records) {
+  const byRoom = new Map();
+  for (const rec of records) {
+    const existing = byRoom.get(rec.room);
+    if (!existing) {
+      byRoom.set(rec.room, rec);
+    } else if (rec.capacity > existing.capacity) {
+      // Replace value but keep original insertion order.
+      byRoom.set(rec.room, rec);
+    }
+  }
+  return Array.from(byRoom.values());
+}
+
+/**
+ * Parse results HTML into the unique list of rooms, in document order.
  *
- * Steps (order matters, rule 4):
- *   1. Extract candidate row texts.
- *   2. Keep only rows that parse as a full room row (have "/" and "Capacity:").
- *   3. Dedupe by room name (keeps the first / largest-capacity seen per name).
+ * The PRIMARY path is the live Bootstrap-card shape (div.resourceName + a
+ * following "Capacity: N"). If no cards are found we fall back to the
+ * inline-text/table-row shape for text-only captures. Finally we dedupe by
+ * the `room` code.
  *
  * @param {string} html
- * @returns {Array<{name: string, capacity: number}>}
+ * @returns {Array<{name:string,room:string,type:string,capacity:number}>}
  */
 function parseResults(html) {
-  const candidates = extractCandidateRowTexts(html);
+  const src = String(html == null ? '' : html);
 
-  const parsed = [];
-  for (const text of candidates) {
-    const row = parseRowText(text);
-    if (row) parsed.push(row);
-  }
+  // Primary: Bootstrap cards (the real site).
+  let records = parseCardsFromHtml(src);
 
-  // Dedupe by name. If the same name appears twice, keep the max capacity
-  // (defensive; capacities for the same room should match).
-  const byName = new Map();
-  for (const row of parsed) {
-    const existing = byName.get(row.name);
-    if (!existing || row.capacity > existing.capacity) {
-      byName.set(row.name, row);
+  // Fallback: inline text rows / anchors (text-only captures).
+  if (records.length === 0) {
+    const candidates = extractCandidateRowTexts(src);
+    records = [];
+    for (const text of candidates) {
+      const rec = parseRowText(text);
+      if (rec) records.push(rec);
     }
   }
 
-  return Array.from(byName.values());
+  return dedupeRooms(records);
 }
 
 /**
@@ -276,7 +345,11 @@ function filterAndSortRooms(rooms, minCapacity) {
   const min = Number.isFinite(Number(minCapacity)) ? Number(minCapacity) : 0;
   return rooms
     .filter((r) => r.capacity >= min)
-    .sort((a, b) => b.capacity - a.capacity || a.name.localeCompare(b.name));
+    .sort(
+      (a, b) =>
+        b.capacity - a.capacity ||
+        String(a.room || a.name).localeCompare(String(b.room || b.name))
+    );
 }
 
 /**
@@ -312,8 +385,11 @@ const RBS_NATIVE = {
   formatWindow,
   timeToMinutes,
   buildSearchPlan,
+  makeRoomRecord,
   parseRowText,
+  parseCardsFromHtml,
   extractCandidateRowTexts,
+  dedupeRooms,
   parseResults,
   filterAndSortRooms,
   classifyEmpty,
