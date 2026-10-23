@@ -715,6 +715,15 @@ function shouldRevealNative(arg) {
   return (arg.consecutiveFailures || 0) >= 3;
 }
 
+/**
+ * Should we reveal native UI based on a self-check result?
+ * @param {{ok: boolean, missing: string[]}} check
+ * @returns {boolean}
+ */
+function shouldRevealNativeOnFailure(check) {
+  return check ? check.ok === false : false;
+}
+
 // --- Self-check for panel.js UI references ---------------------------------
 
 /**
@@ -793,6 +802,7 @@ const RBS_NATIVE = {
   rangeHasConflict,
   keyToAction,
   shouldRevealNative,
+  shouldRevealNativeOnFailure,
   selfCheck,
 };
 

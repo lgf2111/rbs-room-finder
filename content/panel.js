@@ -31,6 +31,8 @@
     classifyEmpty,
     createSlotQueue,
     timeToMinutes,
+    NATIVE_HIDE_SELECTORS,
+    shouldRevealNativeOnFailure,
   } = N;
 
   // Global UI references
@@ -209,6 +211,9 @@
 
   function renderFatal(message) {
     try {
+      // Reveal native UI when showing fatal error
+      showNativeUI();
+      
       const existing = document.getElementById('rbs-room-finder-host');
       if (existing) existing.remove();
       
@@ -907,26 +912,10 @@
       hostElement.appendChild(statusbar);
     }
     
-    return { statusbar, stats, errorIndicator };
+    return { statusBar: statusbar, stats, errorIndicator };
   }
 
   // ---- hide/toggle native UI ------------------------------------------------
-
-  const NATIVE_HIDE_SELECTORS = [
-    '#ctl00_MainContent_SearchTopBar',
-    '#ctl00_MainContent_SearchBar',
-    '#ctl00_MainContent_SearchPanel',
-    '#ctl00_MainContent_ListViewPanel',
-    '.searchresult',
-    '.searchresultheader',
-    '.searchresultfooter',
-    '#ctl00_MainContent_PagingTop',
-    '#ctl00_MainContent_PagingBottom',
-    '#ctl00_MainContent_DetailPanel',
-    '#ctl00_MainContent_DetailInfoPanel',
-    '#ctl00_MainContent_BookingPanel',
-    '#ctl00_MainContent_BookingInfoPanel',
-  ];
 
   function hideNativeUI() {
     try {
@@ -1189,9 +1178,6 @@
         return;
       }
       
-      // Hide native UI at boot, reliably (must run before any await)
-      hideNativeUI();
-      
       // Build top bar (Pass 2) - but DON'T attach listeners yet
       const roomTypes = readRoomTypes();
       const windowOpts = readWindowOptions();
@@ -1205,7 +1191,9 @@
       
       // Run self-check before assigning to global ui
       const check = selfCheck(localUI);
-      if (!check.ok) {
+      if (shouldRevealNativeOnFailure(check)) {
+        // Show native UI and render error
+        showNativeUI();
         renderFatal('UI self-check failed: ' + check.missing.join(', '));
         return;
       }
@@ -1215,6 +1203,9 @@
       
       // Only now assign to global ui
       ui = localUI;
+      
+      // Hide native UI only AFTER self-check passes and UI is assigned
+      hideNativeUI();
       
       // Populate building select asynchronously
       populateBuildingSelect(ui.buildingSelect).catch(err => {
@@ -1236,9 +1227,9 @@
       
       return ui;
     } catch (error) {
+      // Show native UI on any init failure
+      showNativeUI();
       renderFatal(`Init failed: ${error.message}`);
-      // Still hide native UI even if init fails partially
-      try { hideNativeUI(); } catch (e) {}
       return null;
     }
   }

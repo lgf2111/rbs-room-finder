@@ -338,7 +338,43 @@ test('shouldRevealNative triggers after 3 consecutive failures', () => {
   assert.equal(native.shouldRevealNative({ consecutiveFailures: 4 }), true);
 });
 
-// 17. selfCheck validates complete refs object
+// 17. shouldRevealNativeOnFailure
+test('shouldRevealNativeOnFailure returns true when check.ok is false', () => {
+  assert.equal(native.shouldRevealNativeOnFailure({ ok: false, missing: ['statusBar'] }), true);
+  assert.equal(native.shouldRevealNativeOnFailure({ ok: true, missing: [] }), false);
+  assert.equal(native.shouldRevealNativeOnFailure(null), false);
+  assert.equal(native.shouldRevealNativeOnFailure(undefined), false);
+  assert.equal(native.shouldRevealNativeOnFailure({}), false);
+  assert.equal(native.shouldRevealNativeOnFailure({ ok: true }), false);
+});
+
+// 18. selfCheck detects statusBar vs statusbar key mismatch
+test('selfCheck fails when statusbar (lowercase) is provided instead of statusBar', () => {
+  const stubWithLowercase = {
+    host: {},
+    topbar: {},
+    buildingSelect: { addEventListener: () => {} },
+    typeSelect: { addEventListener: () => {} },
+    capInput: { addEventListener: () => {} },
+    searchInput: { addEventListener: () => {} },
+    dateChips: {},
+    startSelect: { addEventListener: () => {} },
+    endSelect: { addEventListener: () => {} },
+    sortSelect: { addEventListener: () => {} },
+    refreshBtn: { addEventListener: () => {} },
+    nativeBtn: { addEventListener: () => {} },
+    boardHeader: {},
+    boardRows: {},
+    // statusbar (lowercase) instead of statusBar
+    statusbar: {}
+  };
+  
+  const result = native.selfCheck(stubWithLowercase);
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.missing, ['statusBar']);
+});
+
+// 19. selfCheck validates complete refs object
 test('selfCheck on a complete stub refs object → {ok:true}', () => {
   const stub = {
     host: {},
@@ -363,7 +399,7 @@ test('selfCheck on a complete stub refs object → {ok:true}', () => {
   assert.deepEqual(result.missing, []);
 });
 
-// 18. selfCheck detects missing elements
+// 20. selfCheck detects missing elements
 test('selfCheck on one missing typeSelect → {ok:false, missing:["typeSelect"]}', () => {
   const stub = {
     host: {},
