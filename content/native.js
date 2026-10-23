@@ -603,6 +603,118 @@ function createSlotQueue(opts) {
   };
 }
 
+// --- New functions for full-page UI -----------------------------------------
+
+/** CSS selectors for hiding native UI containers (must NOT hide modals). */
+const NATIVE_HIDE_SELECTORS = Object.freeze([
+  'header', 'nav', 'footer', '.body-content', '#divRoomInfo',
+  '#divSearchContentResult', '#divbtnbottom',
+]);
+
+/** Forbidden click IDs — NEVER submit a booking. */
+const FORBIDDEN_CLICK_IDS = Object.freeze([
+  'btnBookingSave', 'btnConfirmBookingSave', 'btnBookingNext', 'btnBooking',
+  'btnBookingMainClear', 'btnMultipleBookingConfirm', 'btnMultipleBookingConfirmSave',
+]);
+
+/** Weekday initials: Sun, Mon, Tue, Wed, Thu, Fri, Sat */
+const WEEKDAY_INITIALS = Object.freeze(['S', 'M', 'T', 'W', 'T', 'F', 'S']);
+
+/**
+ * Build date chips for the next N days.
+ * @param {Date} startDate  base date (today)
+ * @param {number} count    how many chips to produce
+ * @returns {Array<{date:Date,label:string,weekday:string,isToday:boolean}>}
+ */
+function buildDateChips(startDate, count) {
+  const chips = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + i);
+    const day = d.getDate();
+    const month = MONTHS[d.getMonth()];
+    const year = d.getFullYear();
+    const weekday = WEEKDAY_INITIALS[d.getDay()];
+    chips.push({
+      date: d,
+      label: `${day} ${month} ${year}`,
+      weekday,
+      isToday: i === 0,
+    });
+  }
+  return chips;
+}
+
+/**
+ * Convert a cell range (start,end indices) to a time window.
+ * @param {string[]} axis    buildSlotAxis output
+ * @param {number} fromIdx   inclusive start index (0-based)
+ * @param {number} toIdx     inclusive end index
+ * @returns {{start:string,end:string,count:number}}
+ */
+function rangeToWindow(axis, fromIdx, toIdx) {
+  if (!Array.isArray(axis) || axis.length === 0) {
+    return { start: '', end: '', count: 0 };
+  }
+  const startIdx = Math.max(0, Math.min(fromIdx, toIdx));
+  const endIdx = Math.min(axis.length - 1, Math.max(fromIdx, toIdx));
+  const start = axis[startIdx];
+  let end = axis[endIdx];
+  // The slot that starts at `end` runs for 30 min, so the window ends at its end time.
+  const endMin = timeToMinutes(end);
+  if (!isNaN(endMin)) {
+    end = minutesToTime(endMin + 30);
+  }
+  return { start, end, count: endIdx - startIdx + 1 };
+}
+
+/**
+ * Does a range contain at least one taken slot?
+ * @param {Array<object|null>} slots    alignSlots output (may contain nulls)
+ * @param {number} fromIdx              inclusive start index
+ * @param {number} toIdx                inclusive end index
+ * @returns {boolean}
+ */
+function rangeHasConflict(slots, fromIdx, toIdx) {
+  if (!Array.isArray(slots)) return false;
+  const start = Math.max(0, Math.min(fromIdx, toIdx));
+  const end = Math.min(slots.length - 1, Math.max(fromIdx, toIdx));
+  for (let i = start; i <= end; i++) {
+    const s = slots[i];
+    if (s && s.state === 'taken') return true;
+  }
+  return false;
+}
+
+/**
+ * Map a key to an action, ignoring while an input is focused.
+ * @param {string} key          lowercase key (e.g., 'j')
+ * @param {object} context
+ * @param {boolean} [context.inInput]  true if focus is inside an input/textarea/select
+ * @returns {string|null}       action name or null for no-op
+ */
+function keyToAction(key, context) {
+  if (context && context.inInput) return null;
+  const map = {
+    '/': 'focusSearch',
+    'j': 'rowDown',
+    'k': 'rowUp',
+    'enter': 'handoff',
+    'd': 'toggleNative',
+    'escape': 'clear',
+  };
+  return map[key] || null;
+}
+
+/**
+ * Should we reveal the native UI after consecutive failures?
+ * @param {object} arg
+ * @param {number} arg.consecutiveFailures
+ * @returns {boolean}
+ */
+function shouldRevealNative(arg) {
+  return (arg.consecutiveFailures || 0) >= 3;
+}
+
 // --- Exports: browser (globalThis) AND Node (module.exports, guarded) --------
 
 const RBS_NATIVE = {
@@ -610,6 +722,9 @@ const RBS_NATIVE = {
   RBS_ENDPOINTS,
   DEFAULT_WINDOW,
   SLOT_STATUS,
+  NATIVE_HIDE_SELECTORS,
+  FORBIDDEN_CLICK_IDS,
+  WEEKDAY_INITIALS,
   formatDate,
   formatWindow,
   timeToMinutes,
@@ -628,6 +743,11 @@ const RBS_NATIVE = {
   hasAnyFreeCell,
   slotCacheKey,
   createSlotQueue,
+  buildDateChips,
+  rangeToWindow,
+  rangeHasConflict,
+  keyToAction,
+  shouldRevealNative,
 };
 
 // Expose each on globalThis for the content script / panel.js.

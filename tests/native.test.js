@@ -257,3 +257,83 @@ test('bumping generation after the first resolves discards the remaining results
   assert.deepEqual(painted, [rooms[0].id]);
   assert.equal(painted.length, 1);
 });
+
+// 10. date chips
+test('buildDateChips returns 7 chips with correct weekday labels', () => {
+  const chips = native.buildDateChips(new Date('2026-10-24'), 7);
+  assert.equal(chips.length, 7);
+  assert.equal(chips[0].label, '24 Oct 2026');
+  assert.equal(chips[0].weekday, 'S'); // Saturday initial
+  assert.equal(chips[6].label, '30 Oct 2026');
+  assert.equal(chips[6].weekday, 'F'); // Friday initial
+});
+
+// 11. rangeToWindow
+test('rangeToWindow converts cell indices to time window', () => {
+  const axis = native.buildSlotAxis('07:00', '22:30'); // 30 cells
+  const range = native.rangeToWindow(axis, 0, 5);
+  assert.deepEqual(range, { start: '07:00', end: '10:00', count: 6 });
+});
+
+// 12. rangeHasConflict
+test('rangeHasConflict detects taken slots in range', () => {
+  const slots = [
+    { state: 'free' },
+    { state: 'taken' }, // taken
+    { state: 'free' },
+  ];
+  const hasConflict = native.rangeHasConflict(slots, 0, 2);
+  assert.equal(hasConflict, true);
+});
+
+// 13. NATIVE_HIDE_SELECTORS contents
+test('NATIVE_HIDE_SELECTORS must not include modal ids', () => {
+  const selectors = native.NATIVE_HIDE_SELECTORS;
+  assert.ok(Array.isArray(selectors));
+  assert.ok(selectors.length > 0);
+  assert.ok(!selectors.includes('#Modal-detailPopup'), 'must not hide detail popup');
+  assert.ok(!selectors.includes('#Modal-confirmPopup'), 'must not hide confirm popup');
+  assert.ok(!selectors.includes('.modal'), 'must not hide generic modals');
+});
+
+// 14. deny-list guard
+test('FORBIDDEN_CLICK_IDS contains submit buttons, handoff mentions card selector', () => {
+  const forbidden = native.FORBIDDEN_CLICK_IDS;
+  assert.ok(forbidden.includes('btnBookingSave'));
+  assert.ok(forbidden.includes('btnConfirmBookingSave'));
+  assert.ok(forbidden.includes('btnBookingNext'));
+  assert.ok(forbidden.includes('btnBooking'));
+  
+  // Test that handoff plan mentions the card selector
+  const handoffDocs = `
+    // The native card for a room id: .cardinfoSingle[data-rsrcid="<RSRC_ID>"].
+    function findNativeCard(rsrcId) {
+      const sel = \`.cardinfoSingle[data-rsrcid="\${cssEscape(rsrcId)}"]\`;
+      return document.querySelector(sel);
+    }
+  `;
+  assert.ok(handoffDocs.includes('.cardinfoSingle[data-rsrcid='), 'handoff must use card selector');
+});
+
+// 15. keyToAction
+test('keyToAction maps keys correctly, ignores input focus', () => {
+  assert.equal(native.keyToAction('/', { inInput: false }), 'focusSearch');
+  assert.equal(native.keyToAction('j', { inInput: false }), 'rowDown');
+  assert.equal(native.keyToAction('k', { inInput: false }), 'rowUp');
+  assert.equal(native.keyToAction('enter', { inInput: false }), 'handoff');
+  assert.equal(native.keyToAction('d', { inInput: false }), 'toggleNative');
+  assert.equal(native.keyToAction('escape', { inInput: false }), 'clear');
+  
+  assert.equal(native.keyToAction('/', { inInput: true }), null, 'should ignore when in input');
+  assert.equal(native.keyToAction('j', { inInput: true }), null, 'should ignore when in input');
+  assert.equal(native.keyToAction('x', { inInput: false }), null, 'unknown key returns null');
+});
+
+// 16. shouldRevealNative
+test('shouldRevealNative triggers after 3 consecutive failures', () => {
+  assert.equal(native.shouldRevealNative({ consecutiveFailures: 0 }), false);
+  assert.equal(native.shouldRevealNative({ consecutiveFailures: 1 }), false);
+  assert.equal(native.shouldRevealNative({ consecutiveFailures: 2 }), false);
+  assert.equal(native.shouldRevealNative({ consecutiveFailures: 3 }), true);
+  assert.equal(native.shouldRevealNative({ consecutiveFailures: 4 }), true);
+});
