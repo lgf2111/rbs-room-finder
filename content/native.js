@@ -756,6 +756,31 @@ function filterRooms(rooms, roomType, minCapacity, facilityTypes) {
   });
 }
 
+// --- Axis grid helpers ------------------------------------------------------
+
+/**
+ * Return the grid-template-columns value for both header and rows.
+ * @param {string[]} axis buildSlotAxis output
+ * @returns {string}
+ */
+function axisGridTemplate(axis) {
+  if (!Array.isArray(axis)) return '180px';
+  return `180px repeat(${axis.length}, 1fr)`;
+}
+
+/**
+ * Build hour axis header cells.
+ * @param {string[]} axis buildSlotAxis output
+ * @returns {Array<{isHour: boolean, label: string}>}
+ */
+function buildAxisHeaderCells(axis) {
+  if (!Array.isArray(axis)) return [];
+  return axis.map(label => ({
+    isHour: /:00$/.test(label),
+    label
+  }));
+}
+
 // --- Self-check for panel.js UI references ---------------------------------
 
 /**
@@ -837,6 +862,8 @@ const RBS_NATIVE = {
   shouldRevealNativeOnFailure,
   selfCheck,
   filterRooms,
+  axisGridTemplate,
+  buildAxisHeaderCells,
 };
 
 // Expose each on globalThis for the content script / panel.js.

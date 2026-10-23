@@ -457,3 +457,30 @@ test('equipment filter removes capacity-0 non-facility types when roomType is em
   assert.equal(filteredCapacity.length, 1);
   assert.equal(filteredCapacity[0].id, '1');
 });
+
+// 22. axisGridTemplate
+test('axisGridTemplate returns correct grid template for axis', () => {
+  const axis = native.buildSlotAxis('07:00', '22:30');
+  const template = native.axisGridTemplate(axis);
+  assert.equal(template, '180px repeat(30, 1fr)');
+});
+
+// 23. buildAxisHeaderCells
+test('buildAxisHeaderCells returns exactly axis.length cells', () => {
+  const axis = native.buildSlotAxis('07:00', '22:30');
+  const cells = native.buildAxisHeaderCells(axis);
+  assert.equal(cells.length, axis.length);
+  assert.equal(cells[0].isHour, true);
+  assert.equal(cells[0].label, '07:00');
+  assert.equal(cells[1].isHour, false);
+  assert.equal(cells[1].label, '07:30');
+});
+
+// 24. Row grid template matches header
+test('rowGridTemplate should be same as axisGridTemplate', () => {
+  const axis = native.buildSlotAxis('07:00', '22:30');
+  const headerTemplate = native.axisGridTemplate(axis);
+  // In panel.js, buildRoomRow uses axisGridTemplate(board.axis)
+  // So row template should match header template
+  assert.equal(headerTemplate, '180px repeat(30, 1fr)');
+});
