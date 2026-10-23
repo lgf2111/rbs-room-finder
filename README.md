@@ -159,6 +159,42 @@ third-party libraries. The only persistence API it uses is
 status line. The manifest declares only the `storage` permission plus the RBS
 host permission (same-origin fetch needs nothing more).
 
+## The full-page UI (v2)
+
+On `/SRB001/SRB001Page` the extension hides the native page and mounts its own
+app in a shadow root covering the viewport:
+
+- **Top bar** — building, room type (`All rooms` = every facility type), min
+  capacity, room-name filter, a 14-day date strip (today selected), day window,
+  sort, free/taken legend, Refresh, and **Native UI**.
+- **Board** — one row per room: code, type, capacity, then 30 half-hour cells
+  (07:00–21:30 for a 07:00–22:30 window) on a shared axis. Green = free
+  (`SLT_STATUS` 1), red = taken (3), grey = unknown, dimmed = outside the window.
+  Click a cell, shift-click to extend: the drawer shows the window, the slot
+  count and any conflict, then **Book on native form**.
+- **Status bar** — `n/m rooms loaded · Done`, request state, and a retry control
+  only when a request failed.
+
+**The native page is hidden, never removed.** The booking popups and postback
+handlers live in that DOM, so removing it would break booking. **Native UI** (or
+`d`) reveals it and hides the app; any failure of the app reveals it
+automatically, so there is no state where the page has neither.
+
+**Theme** — dark by default, every colour and size a CSS custom property on
+`:host` inside the shadow root. A complete light theme is defined under
+`:host([data-theme="light"])`; switch it by setting `data-theme="light"` on the
+shadow host element. (Variables must be declared on `:host`, not `:root`: inside
+a shadow root `:root` matches the *document* root, so nothing inherits.)
+
+**Keyboard** — `/` filter, `j`/`k` rows, `Enter` hand off the cursor row, `d`
+toggle native, `Esc` clear the selection.
+
+**Booking handoff** — the app never submits. `Book on native form` reveals the
+native page, clicks that room's card, scrolls the native action bar into view and
+tells you to confirm. If neither the native detail popup nor a
+`N Facility Selected` badge appears within 2.5 s it says the selection did not
+take instead of claiming success.
+
 ## Install (unpacked)
 
 1. Clone or download this folder.
