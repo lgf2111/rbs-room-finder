@@ -1,0 +1,63 @@
+<!--
+  Realistic-ish ASP.NET WebForms results markup for RBS Room Finder tests.
+
+  Each of the first three rooms has:
+    - a FULL row  : "<room>/<type> Capacity: N <name>"  (has "/" and "Capacity:")
+    - a nested BADGE fragment : "Capacity: N" (NO "/", must be rejected)
+
+  The fourth room appears ONLY ONCE, as an anchor row (still a full row shape).
+
+  Row shape per rule 4: /<type> Capacity: N/  -> must contain both "/" and "Capacity:".
+-->
+<div id="searchResultsPanel">
+  <table id="gvSearchResults" class="rgMasterTable" cellspacing="0" border="0">
+    <tbody>
+      <!-- ================= Room 1 : E2-05-12 ================= -->
+      <tr class="rgRow">
+        <td>
+          <input type="checkbox" id="chk_E2-05-12" name="resourceSel" />
+        </td>
+        <td class="roomCell">
+          <span class="roomLabel">E2-05-12/ICT Laboratory Capacity: 81 Innovation Lab</span>
+          <!-- nested badge fragment (no slash) -->
+          <span class="badge rgBadge">Capacity: 81</span>
+        </td>
+      </tr>
+
+      <!-- ================= Room 2 : SR-03-07 ================= -->
+      <tr class="rgAltRow">
+        <td>
+          <input type="checkbox" id="chk_SR-03-07" name="resourceSel" />
+        </td>
+        <td class="roomCell">
+          <span class="roomLabel">SR-03-07/Seminar Room Capacity: 40 Seminar Room A</span>
+          <span class="badge rgBadge">Capacity: 40</span>
+        </td>
+      </tr>
+
+      <!-- ================= Room 3 : DR-01-02 ================= -->
+      <tr class="rgRow">
+        <td>
+          <input type="checkbox" id="chk_DR-01-02" name="resourceSel" />
+        </td>
+        <td class="roomCell">
+          <span class="roomLabel">DR-01-02/Discussion Room Capacity: 8 Discussion Pod 2</span>
+          <span class="badge rgBadge">Capacity: 8</span>
+        </td>
+      </tr>
+
+      <!-- ================= Room 4 : DR-01-05 (anchor row, appears once) ======= -->
+      <tr class="rgAltRow">
+        <td>
+          <input type="checkbox" id="chk_DR-01-05" name="resourceSel" />
+        </td>
+        <td class="roomCell">
+          <a href="SRB002Page?rid=DR-01-05">DR-01-05/Discussion Room Capacity: 12 Discussion Pod 5</a>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- The persistent toast that lies across searches (rule 5). -->
+  <div id="toastMessage" class="rtToast">No resources with available time slots found</div>
+</div>

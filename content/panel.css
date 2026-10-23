@@ -1,0 +1,328 @@
+/*
+ * content/panel.css
+ *
+ * Styles for the RBS Room Finder floating panel. These rules are injected INTO
+ * the shadow root, so they do not leak out onto the WebForms page and the page
+ * styles do not leak in. :host targets the shadow host element.
+ *
+ * This file is also listed in manifest content_scripts.css only so Chrome loads
+ * it as an extension resource; the panel copies its text into the shadow root.
+ */
+
+:host {
+  all: initial;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+.rbs-panel {
+  position: fixed;
+  top: 84px;
+  right: 20px;
+  width: 340px;
+  max-height: calc(100vh - 120px);
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #1f2933;
+  background: #ffffff;
+  border: 1px solid #d6dde5;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(16, 24, 40, 0.18);
+  z-index: 2147483000;
+  overflow: hidden;
+}
+
+.rbs-panel.rbs-collapsed .rbs-body {
+  display: none;
+}
+
+.rbs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, #1b4965, #2a6f97);
+  color: #fff;
+  cursor: move;
+}
+
+.rbs-title {
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.2px;
+}
+
+.rbs-header-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.rbs-icon-btn {
+  appearance: none;
+  border: none;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rbs-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.rbs-body {
+  padding: 12px 14px;
+  overflow-y: auto;
+}
+
+.rbs-field {
+  margin-bottom: 10px;
+}
+
+.rbs-field label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #52606d;
+  margin-bottom: 4px;
+}
+
+.rbs-field select,
+.rbs-field input {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid #cbd2d9;
+  border-radius: 8px;
+  background: #fff;
+  color: #1f2933;
+  font-size: 13px;
+}
+
+.rbs-field select:focus,
+.rbs-field input:focus {
+  outline: 2px solid #2a6f97;
+  outline-offset: 0;
+  border-color: #2a6f97;
+}
+
+.rbs-row {
+  display: flex;
+  gap: 8px;
+}
+
+.rbs-row .rbs-field {
+  flex: 1;
+}
+
+.rbs-reuse {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.rbs-reuse.rbs-visible {
+  display: flex;
+}
+
+.rbs-chip {
+  appearance: none;
+  border: 1px solid #a7c4d8;
+  background: #eaf3f9;
+  color: #1b4965;
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rbs-chip:hover {
+  background: #d8e9f4;
+}
+
+.rbs-search-btn {
+  appearance: none;
+  width: 100%;
+  border: none;
+  background: #2a6f97;
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 10px;
+  border-radius: 9px;
+  cursor: pointer;
+  margin-top: 2px;
+}
+
+.rbs-search-btn:hover {
+  background: #1b4965;
+}
+
+.rbs-search-btn:disabled {
+  background: #9fb3c0;
+  cursor: progress;
+}
+
+.rbs-caveat {
+  font-size: 11px;
+  color: #6b7785;
+  margin: 10px 0 4px;
+}
+
+.rbs-status {
+  margin-top: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  background: #f1f5f8;
+  color: #3e4c59;
+  display: none;
+}
+
+.rbs-status.rbs-visible {
+  display: block;
+}
+
+.rbs-status.rbs-error {
+  background: #fdecea;
+  color: #8a1c13;
+}
+
+.rbs-status.rbs-warn {
+  background: #fff6e5;
+  color: #8a5a00;
+}
+
+.rbs-status.rbs-info {
+  background: #eaf3f9;
+  color: #1b4965;
+}
+
+.rbs-results {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rbs-card {
+  border: 1px solid #dbe2ea;
+  border-radius: 10px;
+  padding: 10px 11px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rbs-card-main {
+  min-width: 0;
+}
+
+.rbs-card-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: #1f2933;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rbs-card-meta {
+  font-size: 11px;
+  color: #6b7785;
+  margin-top: 2px;
+}
+
+.rbs-cap-pill {
+  display: inline-block;
+  background: #eaf3f9;
+  color: #1b4965;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.rbs-book-btn {
+  appearance: none;
+  border: 1px solid #2a6f97;
+  background: #fff;
+  color: #2a6f97;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  flex: none;
+}
+
+.rbs-book-btn:hover {
+  background: #2a6f97;
+  color: #fff;
+}
+
+.rbs-book-note {
+  margin-top: 8px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: #fff6e5;
+  color: #8a5a00;
+  font-size: 12px;
+  display: none;
+}
+
+.rbs-book-note.rbs-visible {
+  display: block;
+}
+
+/* Launcher button injected on non-search RBS pages. */
+.rbs-launcher {
+  position: fixed;
+  bottom: 22px;
+  right: 22px;
+  z-index: 2147483000;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+}
+
+.rbs-launcher a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #2a6f97;
+  color: #fff;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 16px;
+  border-radius: 999px;
+  box-shadow: 0 8px 22px rgba(16, 24, 40, 0.22);
+}
+
+.rbs-launcher a:hover {
+  background: #1b4965;
+}

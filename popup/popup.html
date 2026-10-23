@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RBS Room Finder</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="pop-header">
+      <h1>RBS Room Finder</h1>
+    </header>
+
+    <main class="pop-body">
+      <div id="status" class="pop-status pop-info">Checking&hellip;</div>
+
+      <div class="pop-field">
+        <label for="defaultType">Default room type</label>
+        <select id="defaultType">
+          <option value="">(remember last used)</option>
+        </select>
+      </div>
+
+      <div class="pop-actions">
+        <button id="openRbs" class="pop-btn pop-primary">Open RBS</button>
+        <button id="clearPrefs" class="pop-btn">Clear saved prefs</button>
+      </div>
+
+      <p class="pop-note">
+        No credentials and no network calls of its own. It only drives the
+        native RBS controls and reads the page. "Available" means free for the
+        entire window you choose.
+      </p>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

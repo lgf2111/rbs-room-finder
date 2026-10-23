@@ -1,0 +1,119 @@
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  width: 300px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  font-size: 13px;
+  color: #1f2933;
+  background: #fff;
+}
+
+.pop-header {
+  background: linear-gradient(135deg, #1b4965, #2a6f97);
+  color: #fff;
+  padding: 12px 14px;
+}
+
+.pop-header h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pop-body {
+  padding: 12px 14px;
+}
+
+.pop-status {
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  margin-bottom: 12px;
+  background: #f1f5f8;
+  color: #3e4c59;
+}
+
+.pop-status.pop-info {
+  background: #eaf3f9;
+  color: #1b4965;
+}
+
+.pop-status.pop-ok {
+  background: #e7f6ec;
+  color: #126330;
+}
+
+.pop-status.pop-warn {
+  background: #fff6e5;
+  color: #8a5a00;
+}
+
+.pop-field {
+  margin-bottom: 12px;
+}
+
+.pop-field label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #52606d;
+  margin-bottom: 4px;
+}
+
+.pop-field select {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid #cbd2d9;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
+}
+
+.pop-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.pop-btn {
+  flex: 1;
+  appearance: none;
+  border: 1px solid #cbd2d9;
+  background: #fff;
+  color: #1f2933;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.pop-btn:hover {
+  background: #f1f5f8;
+}
+
+.pop-primary {
+  background: #2a6f97;
+  border-color: #2a6f97;
+  color: #fff;
+}
+
+.pop-primary:hover {
+  background: #1b4965;
+}
+
+.pop-note {
+  margin: 14px 0 0;
+  font-size: 11px;
+  color: #6b7785;
+  line-height: 1.45;
+}
