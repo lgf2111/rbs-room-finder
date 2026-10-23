@@ -12,7 +12,7 @@
 
   const SEARCH_PATH = '/SRB001/SRB001Page';
   const STORAGE_KEY = 'rbsLastBoard';
-  const PANEL_CSS = `:host{all:initial}:root{--rbs-page:#0b0c0e;--rbs-surface:#14161a;--rbs-surface2:#1f2226;--rbs-border:#2b2f36;--rbs-primary-text:#e6e8eb;--rbs-muted:#8b9199;--rbs-accent:#c8102e;--rbs-free:#3fb950;--rbs-taken:#8b3a3a;--rbs-font:-apple-system,"Segoe UI",system-ui,sans-serif;--rbs-font-mono:ui-monospace,"SF Mono",Monaco,"Cascadia Mono",monospace;--rbs-shadow:0 4px 20px rgba(0,0,0,0.5);--rbs-gap:12px;--rbs-radius:8px;--rbs-cell-size:32px;--rbs-hour-height:40px;--rbs-row-height:32px;--rbs-topbar-height:64px;--rbs-status-height:24px}[data-theme="light"]{--rbs-page:#fff;--rbs-surface:#f8f9fa;--rbs-surface2:#e9ecef;--rbs-border:#dee2e6;--rbs-primary-text:#212529;--rbs-muted:#6c757d;--rbs-accent:#0d6efd;--rbs-free:#198754;--rbs-taken:#dc3545}*,*::before,*::after{box-sizing:border-box}.rbs-fullpage{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;background:var(--rbs-page);color:var(--rbs-primary-text);font-family:var(--rbs-font);font-size:13px;line-height:1.4;overflow:hidden}.rbs-topbar{height:var(--rbs-topbar-height);display:flex;align-items:center;padding:0 var(--rbs-gap);background:var(--rbs-surface);border-bottom:1px solid var(--rbs-border);gap:var(--rbs-gap);flex-shrink:0}.rbs-brand{display:flex;align-items:center;gap:6px;font-weight:600;color:var(--rbs-accent);margin-right:12px}.rbs-brand-text{font-size:14px}.rbs-brand-building{font-size:13px;color:var(--rbs-primary-text);margin-left:4px}.rbs-control-group{display:flex;align-items:center;gap:8px}.rbs-control-group select,.rbs-control-group input{background:var(--rbs-surface2);border:1px solid var(--rbs-border);color:var(--rbs-primary-text);border-radius:var(--rbs-radius);padding:6px 8px;font-size:12px;min-height:28px}.rbs-control-group select:focus,.rbs-control-group input:focus{outline:2px solid var(--rbs-accent);outline-offset:0}.rbs-capacity-input{width:80px}.rbs-search-input{width:120px}.rbs-date-chips{display:flex;gap:4px;overflow-x:auto;padding:2px;scrollbar-width:none}.rbs-date-chip{display:flex;flex-direction:column;align-items:center;padding:6px 8px;background:var(--rbs-surface2);border:1px solid var(--rbs-border);border-radius:var(--rbs-radius);min-width:70px;cursor:pointer;user-select:none}.rbs-date-chip:hover{background:var(--rbs-surface)}.rbs-date-chip.rbs-selected{background:var(--rbs-accent);color:white;border-color:var(--rbs-accent)}.rbs-date-weekday{font-size:10px;font-weight:600;margin-bottom:2px}.rbs-date-label{font-size:11px}.rbs-window-controls{display:flex;align-items:center;gap:4px}.rbs-window-select{width:80px}.rbs-topbar-actions{margin-left:auto;display:flex;gap:8px}.rbs-action-btn{background:var(--rbs-surface2);border:1px solid var(--rbs-border);color:var(--rbs-primary-text);border-radius:var(--rbs-radius);padding:6px 12px;font-size:12px;cursor:pointer;min-height:28px}.rbs-action-btn:hover{background:var(--rbs-surface)}.rbs-action-btn.rbs-primary{background:var(--rbs-accent);color:white;border-color:var(--rbs-accent)}.rbs-action-btn.rbs-primary:hover{background:#d93046}.rbs-main{flex:1;display:flex;overflow:hidden;position:relative}.rbs-board-area{flex:1;display:flex;flex-direction:column;overflow:hidden}.rbs-board-header{height:var(--rbs-hour-height);background:var(--rbs-surface);border-bottom:1px solid var(--rbs-border);display:grid;align-items:center;position:sticky;top:0;z-index:10}.rbs-room-label{padding:0 12px;font-family:var(--rbs-font-mono);font-size:12px;color:var(--rbs-muted);border-right:1px solid var(--rbs-border)}.rbs-board-scroll{flex:1;overflow-y:auto;overflow-x:hidden}.rbs-board-rows{display:flex;flex-direction:column}.rbs-board-row{height:var(--rbs-row-height);display:grid;align-items:center;border-bottom:1px solid var(--rbs-border)}.rbs-room-info{display:flex;align-items:center;padding:0 12px;gap:8px;font-size:12px;border-right:1px solid var(--rbs-border)}.rbs-room-code{font-family:var(--rbs-font-mono);color:var(--rbs-primary-text)}.rbs-room-type{color:var(--rbs-muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}.rbs-room-cap{background:var(--rbs-surface2);color:var(--rbs-primary-text);border-radius:999px;padding:0 6px;font-size:10px;font-weight:600;margin-left:auto}.rbs-slot-cells{display:grid;gap:1px;height:100%;align-items:center}.rbs-slot-cell{height:100%;border-right:1px solid var(--rbs-border)}.rbs-slot-cell.rbs-free{background:var(--rbs-free)}.rbs-slot-cell.rbs-taken{background:var(--rbs-taken)}.rbs-slot-cell.rbs-unknown{background:var(--rbs-surface2)}.rbs-slot-cell.rbs-outside{opacity:0.3}.rbs-slot-cell.rbs-selected{outline:2px solid var(--rbs-accent);outline-offset:-1px;z-index:1}.rbs-slot-cell.rbs-skel{background:linear-gradient(90deg,var(--rbs-surface2) 25%,var(--rbs-surface) 37%,var(--rbs-surface2) 63%);background-size:400% 100%;animation:rbs-shimmer 1.2s ease-in-out infinite}@keyframes rbs-shimmer{0%{background-position:100% 0}100%{background-position:0 0}}@media (max-width:1100px){.rbs-topbar{flex-wrap:wrap;height:auto;padding:8px}.rbs-date-chips{order:1;width:100%;margin-top:8px}}`;
+  const PANEL_CSS = `:host{all:initial}:host{--rbs-page:#0b0c0e;--rbs-surface:#14161a;--rbs-surface2:#1f2226;--rbs-border:#2b2f36;--rbs-primary-text:#e6e8eb;--rbs-muted:#8b9199;--rbs-accent:#c8102e;--rbs-free:#3fb950;--rbs-taken:#8b3a3a;--rbs-font:-apple-system,"Segoe UI",system-ui,sans-serif;--rbs-font-mono:ui-monospace,"SF Mono",Monaco,"Cascadia Mono",monospace;--rbs-shadow:0 4px 20px rgba(0,0,0,0.5);--rbs-gap:12px;--rbs-radius:8px;--rbs-cell-size:32px;--rbs-hour-height:40px;--rbs-row-height:32px;--rbs-topbar-height:64px;--rbs-status-height:24px}:host([data-theme="light"]){--rbs-page:#fff;--rbs-surface:#f8f9fa;--rbs-surface2:#e9ecef;--rbs-border:#dee2e6;--rbs-primary-text:#212529;--rbs-muted:#6c757d;--rbs-accent:#0d6efd;--rbs-free:#198754;--rbs-taken:#dc3545}*,*::before,*::after{box-sizing:border-box}.rbs-fullpage{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;background:var(--rbs-page);color:var(--rbs-primary-text);font-family:var(--rbs-font);font-size:13px;line-height:1.4;overflow:hidden}.rbs-topbar{height:var(--rbs-topbar-height);display:flex;align-items:center;padding:0 var(--rbs-gap);background:var(--rbs-surface);border-bottom:1px solid var(--rbs-border);gap:var(--rbs-gap);flex-shrink:0}.rbs-brand{display:flex;align-items:center;gap:6px;font-weight:600;color:var(--rbs-accent);margin-right:12px}.rbs-brand-text{font-size:14px}.rbs-brand-building{font-size:13px;color:var(--rbs-primary-text);margin-left:4px}.rbs-control-group{display:flex;align-items:center;gap:8px}.rbs-control-group select,.rbs-control-group input{background:var(--rbs-surface2);border:1px solid var(--rbs-border);color:var(--rbs-primary-text);border-radius:var(--rbs-radius);padding:6px 8px;font-size:12px;min-height:28px}.rbs-control-group select:focus,.rbs-control-group input:focus{outline:2px solid var(--rbs-accent);outline-offset:0}.rbs-capacity-input{width:80px}.rbs-search-input{width:120px}.rbs-date-chips{display:flex;gap:4px;overflow-x:auto;padding:2px;scrollbar-width:none}.rbs-date-chip{display:flex;flex-direction:column;align-items:center;padding:6px 8px;background:var(--rbs-surface2);border:1px solid var(--rbs-border);border-radius:var(--rbs-radius);min-width:70px;cursor:pointer;user-select:none}.rbs-date-chip:hover{background:var(--rbs-surface)}.rbs-date-chip.rbs-selected{background:var(--rbs-accent);color:white;border-color:var(--rbs-accent)}.rbs-date-weekday{font-size:10px;font-weight:600;margin-bottom:2px}.rbs-date-label{font-size:11px}.rbs-window-controls{display:flex;align-items:center;gap:4px}.rbs-window-select{width:80px}.rbs-topbar-actions{margin-left:auto;display:flex;gap:8px}.rbs-action-btn{background:var(--rbs-surface2);border:1px solid var(--rbs-border);color:var(--rbs-primary-text);border-radius:var(--rbs-radius);padding:6px 12px;font-size:12px;cursor:pointer;min-height:28px}.rbs-action-btn:hover{background:var(--rbs-surface)}.rbs-action-btn.rbs-primary{background:var(--rbs-accent);color:white;border-color:var(--rbs-accent)}.rbs-action-btn.rbs-primary:hover{background:#d93046}.rbs-main{flex:1;display:flex;overflow:hidden;position:relative}.rbs-board-area{flex:1;display:flex;flex-direction:column;overflow:hidden}.rbs-board-header{height:var(--rbs-hour-height);background:var(--rbs-surface);border-bottom:1px solid var(--rbs-border);display:grid;align-items:center;position:sticky;top:0;z-index:10}.rbs-room-label{padding:0 12px;font-family:var(--rbs-font-mono);font-size:12px;color:var(--rbs-muted);border-right:1px solid var(--rbs-border)}.rbs-board-scroll{flex:1;overflow-y:auto;overflow-x:hidden}.rbs-board-rows{display:flex;flex-direction:column}.rbs-board-row{height:var(--rbs-row-height);display:grid;align-items:center;border-bottom:1px solid var(--rbs-border)}.rbs-room-info{display:flex;align-items:center;padding:0 12px;gap:8px;font-size:12px;border-right:1px solid var(--rbs-border)}.rbs-room-code{font-family:var(--rbs-font-mono);color:var(--rbs-primary-text)}.rbs-room-type{color:var(--rbs-muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}.rbs-room-cap{background:var(--rbs-surface2);color:var(--rbs-primary-text);border-radius:999px;padding:0 6px;font-size:10px;font-weight:600;margin-left:auto}.rbs-slot-cells{display:grid;gap:1px;height:100%;align-items:center}.rbs-slot-cell{height:100%;border-right:1px solid var(--rbs-border)}.rbs-slot-cell.rbs-free{background:var(--rbs-free)}.rbs-slot-cell.rbs-taken{background:var(--rbs-taken)}.rbs-slot-cell.rbs-unknown{background:var(--rbs-surface2)}.rbs-slot-cell.rbs-outside{opacity:0.3}.rbs-slot-cell.rbs-selected{outline:2px solid var(--rbs-accent);outline-offset:-1px;z-index:1}.rbs-slot-cell.rbs-skel{background:linear-gradient(90deg,var(--rbs-surface2) 25%,var(--rbs-surface) 37%,var(--rbs-surface2) 63%);background-size:400% 100%;animation:rbs-shimmer 1.2s ease-in-out infinite}@keyframes rbs-shimmer{0%{background-position:100% 0}100%{background-position:0 0}}@media (max-width:1100px){.rbs-topbar{flex-wrap:wrap;height:auto;padding:8px}.rbs-date-chips{order:1;width:100%;margin-top:8px}}.rbs-fullpage.rbs-app-hidden{display:none!important}`;
 
   const N = globalThis.RBS_NATIVE || globalThis;
   const {
@@ -33,6 +33,7 @@
     timeToMinutes,
     NATIVE_HIDE_SELECTORS,
     shouldRevealNativeOnFailure,
+    rangeToWindow,
   } = N;
 
   // Global UI references
@@ -390,10 +391,10 @@
       nativeBtn.addEventListener('click', () => {
         if (document.documentElement.classList.contains('rbsx-native-hidden')) {
           showNativeUI();
-          nativeBtn.textContent = 'Hide Native';
+          nativeBtn.textContent = 'Show App';
         } else {
           hideNativeUI();
-          nativeBtn.textContent = 'Show Native';
+          nativeBtn.textContent = 'Native UI';
         }
       });
     }
@@ -431,10 +432,10 @@
     uiRefs.nativeBtn.addEventListener('click', () => {
       if (document.documentElement.classList.contains('rbsx-native-hidden')) {
         showNativeUI();
-        uiRefs.nativeBtn.textContent = 'Hide Native';
+        uiRefs.nativeBtn.textContent = 'Show App';
       } else {
         hideNativeUI();
-        uiRefs.nativeBtn.textContent = 'Show Native';
+        uiRefs.nativeBtn.textContent = 'Native UI';
       }
     });
     
@@ -646,6 +647,13 @@
     const entry = board.blocks.get(roomId);
     if (!entry) return;
     // TODO: show error indicator
+    
+    // Update error text in status bar
+    if (!ui) return;
+    const errorEl = ui.errorIndicator?.querySelector('#rbs-error-text');
+    if (errorEl) {
+      errorEl.textContent = `Failed to load some rooms`;
+    }
   }
 
   // Count a room as reaching a terminal state (loaded or failed) exactly once.
@@ -679,12 +687,28 @@
   }
 
   function updateProgress() {
-    // TODO: implement status bar update
+    if (!ui) return;
+    const statsEl = ui.stats?.querySelector('#rbs-stats-text');
+    if (statsEl) {
+      const inFlight = board.queue?.inFlight || 0;
+      statsEl.textContent = `${board.loadedCount}/${board.totalCount} rooms loaded · ${inFlight} requests in flight`;
+    }
   }
 
   function finalizeStatus() {
     if (board.observer) { board.observer.disconnect(); board.observer = null; }
-    // TODO: implement final status update
+    
+    if (!ui) return;
+    const statsEl = ui.stats?.querySelector('#rbs-stats-text');
+    if (statsEl) {
+      statsEl.textContent = `${board.loadedCount}/${board.totalCount} rooms loaded · Done`;
+    }
+    
+    // Clear any error text on successful completion
+    const errorEl = ui.errorIndicator?.querySelector('#rbs-error-text');
+    if (errorEl) {
+      errorEl.textContent = '';
+    }
   }
 
   // ---- selection & drawer -------------------------------------------------
@@ -740,12 +764,7 @@
     }
   }
 
-  function rangeToWindow(startIdx, endIdx) {
-    if (startIdx === null || endIdx === null || board.axis.length === 0) return null;
-    const s = Math.min(startIdx, endIdx);
-    const e = Math.max(startIdx, endIdx);
-    return { start: board.axis[s], end: board.axis[e] };
-  }
+
 
   function rangeHasConflict(startIdx, endIdx, roomId) {
     const entry = board.blocks.get(roomId);
@@ -800,7 +819,7 @@
       getUI().main.appendChild(drawer.drawerEl);
     }
     
-    const window = rangeToWindow(range.startIdx, range.endIdx);
+    const window = rangeToWindow(board.axis, range.startIdx, range.endIdx);
     const conflict = rangeHasConflict(range.startIdx, range.endIdx, room.id);
     
     drawer.content.innerHTML = '';
@@ -814,7 +833,7 @@
     const windowInfo = el('div', { class: 'rbs-window-info' }, [
       el('div', { class: 'rbs-window-label', text: 'Selected window' }),
       el('div', { class: 'rbs-window-value', text: `${window.start} – ${window.end}` }),
-      el('div', { class: 'rbs-slot-count', text: `${Math.abs(range.endIdx - range.startIdx) + 1} slot(s)` })
+      el('div', { class: 'rbs-slot-count', text: `${window.count} slot(s)` })
     ]);
     
     const actions = el('div', { class: 'rbs-drawer-actions' }, [
@@ -922,6 +941,11 @@
       // Add class to document element first
       document.documentElement.classList.add('rbsx-native-hidden');
       
+      // Remove app hidden class to show the app
+      if (ui && ui.host) {
+        ui.host.classList.remove('rbs-app-hidden');
+      }
+      
       // Inject stylesheet to hide native UI elements
       const styleId = 'rbs-native-hide';
       let style = document.getElementById(styleId);
@@ -939,6 +963,11 @@
     const style = document.getElementById('rbs-native-hide');
     if (style) style.remove();
     document.documentElement.classList.remove('rbsx-native-hidden');
+    
+    // Add app hidden class to hide the app
+    if (ui && ui.host) {
+      ui.host.classList.add('rbs-app-hidden');
+    }
   }
 
   // ---- keyboard shortcuts ---------------------------------------------------
@@ -1072,7 +1101,11 @@
     board.form = form;
     board.blocks = new Map();
     board.loadedCount = 0;
+    board.totalCount = 0;
     if (board.observer) { board.observer.disconnect(); board.observer = null; }
+    
+    // Reset status bar
+    updateProgress();
 
     let rooms;
     try {

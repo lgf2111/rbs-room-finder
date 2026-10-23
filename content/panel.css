@@ -12,7 +12,7 @@
   all: initial;
 }
 
-:root {
+:host {
   /* Dark theme (default) */
   --rbs-page: #0b0c0e;
   --rbs-surface: #14161a;
@@ -35,7 +35,7 @@
   --rbs-status-height: 24px;
 }
 
-[data-theme="light"] {
+:host([data-theme="light"]) {
   /* Complete light theme block (unused by default) */
   --rbs-page: #ffffff;
   --rbs-surface: #f8f9fa;
@@ -610,4 +610,8 @@
 
 .rbs-launcher a:hover {
   background: #1b4965;
+}
+/* App visibility with native UI toggle */
+.rbs-fullpage.rbs-app-hidden {
+  display: none !important;
 }
