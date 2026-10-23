@@ -19,7 +19,7 @@
 
   // Storage keys — must match content/panel.js.
   const PROBE_KEY = 'rbsProbe';
-  const LAST_SEARCH_KEY = 'rbsLastSearch';
+  const LAST_SEARCH_KEY = 'rbsLastBoard';
   const DEFAULT_TYPE_KEY = 'rbsDefaultType';
 
   // How fresh a probe must be to describe "the current tab" (ms).

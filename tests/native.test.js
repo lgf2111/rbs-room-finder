@@ -7,331 +7,253 @@ const path = require('node:path');
 
 const native = require('../content/native.js');
 const {
-  parseResults,
-  buildSearchPlan,
-  formatDate,
-  formatWindow,
+  parseRooms,
+  parseSlots,
+  buildSlotAxis,
+  alignSlots,
+  buildSearchPayload,
+  buildSlotPayload,
   classifyEmpty,
-  filterAndSortRooms,
-  resultsSignature,
-  hasNoResultsText,
-  pollForResults,
+  createSlotQueue,
 } = native;
 
-// A stub clock + reader that yields a scripted sequence of snapshots. now()
-// advances by `step` ms on every sleep() so timeouts are deterministic.
-function makePoller(snapshots, { step = 250, start = 0 } = {}) {
-  let t = start;
-  let i = 0;
-  const reads = [];
-  const read = () => {
-    // Clamp to the last snapshot once the script runs out.
-    const snap = snapshots[Math.min(i, snapshots.length - 1)];
-    reads.push(snap);
-    i += 1;
-    return snap;
-  };
-  const now = () => t;
-  const sleep = async (ms) => {
-    t += ms != null ? ms : step;
-  };
-  return { read, now, sleep, reads: () => reads };
-}
-
-const CARD = (n) => ({
-  cardCount: n,
-  names: Array.from({ length: n }, (_, k) => 'ROOM-' + k),
-  noResults: false,
-  readyComplete: true,
-  searchDisabled: false,
-});
-const EMPTY_LOADING = {
-  cardCount: 0,
-  names: [],
-  noResults: false,
-  readyComplete: false,
-  searchDisabled: true,
-};
-const EMPTY_DONE_NO_RESULTS = {
-  cardCount: 0,
-  names: [],
-  noResults: true,
-  readyComplete: true,
-  searchDisabled: false,
-};
-
-const fixtureHtml = fs.readFileSync(
-  path.join(__dirname, 'fixtures', 'results.html'),
-  'utf8'
+// Real API captures committed on purpose — do NOT rewrite them.
+const searchFixture = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'fixtures', 'search-discussion-room.json'), 'utf8')
+);
+const slotsFixture = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'fixtures', 'slots-dr209.json'), 'utf8')
 );
 
-test('parseResults parses the real Bootstrap-card fixture into exactly 4 rooms', () => {
-  const rooms = parseResults(fixtureHtml);
+// 1. parseRooms on the search fixture.
+test('parseRooms returns 6 rooms; first is DR209 Discussion Room cap 8, isBkgrul', () => {
+  const rooms = parseRooms(searchFixture);
+  assert.equal(rooms.length, 6);
 
-  // The live card shape: div.resourceName "NAME/TYPE" + a following "Capacity: N".
-  assert.equal(rooms.length, 4);
+  const first = rooms[0];
+  assert.equal(first.name, 'E2-03-07-DR209');
+  assert.equal(first.type, 'Discussion Room');
+  assert.equal(first.capacity, 8);
+  assert.equal(first.isBkgrul, true);
 
-  // Document order is preserved and the shape is {name, room, type, capacity}.
-  assert.deepEqual(rooms, [
-    { name: 'E2-03-07-DR209/Discussion Room', room: 'E2-03-07-DR209', type: 'Discussion Room', capacity: 8 },
-    { name: 'E2-03-08-DR210/Discussion Room', room: 'E2-03-08-DR210', type: 'Discussion Room', capacity: 8 },
-    { name: 'E2-03-19-DR215/Discussion Room', room: 'E2-03-19-DR215', type: 'Discussion Room', capacity: 8 },
-    { name: 'E2-03-20-DR216/Discussion Room', room: 'E2-03-20-DR216', type: 'Discussion Room', capacity: 8 },
-  ]);
+  // id/typeId carried through for the slot call.
+  assert.equal(first.id, '095bcf06-76d1-4e46-8a63-bd9581481d8f');
+  assert.equal(first.typeId, '0ef480d2-9b9f-4654-bd73-8d0d946b7152');
+  assert.equal(first.building, 'E2');
+  assert.equal(first.isSld, false);
+});
 
-  // Capacities are integers and no name carries "Capacity:".
-  for (const r of rooms) {
-    assert.equal(Number.isInteger(r.capacity), true, `${r.name} capacity is integer`);
-    assert.equal(/Capacity:/i.test(r.name), false, `name "${r.name}" has no Capacity:`);
+// 2. parseSlots on the slots fixture.
+test('parseSlots returns 30 slots; 24 free, 6 taken; taken are exactly 10:00–12:30', () => {
+  const slots = parseSlots(slotsFixture);
+  assert.equal(slots.length, 30);
+
+  const free = slots.filter((s) => s.state === 'free');
+  const taken = slots.filter((s) => s.state === 'taken');
+  assert.equal(free.length, 24);
+  assert.equal(taken.length, 6);
+
+  const takenTimes = taken.map((s) => s.time);
+  assert.deepEqual(takenTimes, ['10:00', '10:30', '11:00', '11:30', '12:00', '12:30']);
+});
+
+// 3. buildSlotAxis.
+test('buildSlotAxis(07:00,22:30) -> 30 labels, 07:00..21:30 every 30 min', () => {
+  const axis = buildSlotAxis('07:00', '22:30');
+  assert.equal(axis.length, 30);
+  assert.equal(axis[0], '07:00');
+  assert.equal(axis[axis.length - 1], '21:30');
+  // Every step is exactly 30 minutes apart.
+  for (let i = 1; i < axis.length; i++) {
+    const prev = native.timeToMinutes(axis[i - 1]);
+    const cur = native.timeToMinutes(axis[i]);
+    assert.equal(cur - prev, 30, `${axis[i - 1]} -> ${axis[i]}`);
   }
 });
 
-test('card parser pairs each resourceName with the capacity that follows it', () => {
-  const html = `
-    <div class="card-body"><div class="resourceName">AAA-1/Seminar Room</div>
-      <div><i></i> Capacity: 25</div></div>
-    <div class="card-body"><div class="resourceName">BBB-2/Seminar Room</div>
-      <div><i></i> Capacity: 40</div></div>
-  `;
-  const rooms = parseResults(html);
-  assert.deepEqual(
-    rooms.map((r) => [r.room, r.type, r.capacity]),
-    [
-      ['AAA-1', 'Seminar Room', 25],
-      ['BBB-2', 'Seminar Room', 40],
-    ]
-  );
+// 4. alignSlots with a hole in the middle.
+test('alignSlots leaves a null where a slot is missing; axis length unchanged', () => {
+  const axis = buildSlotAxis('07:00', '22:30');
+  const slots = parseSlots(slotsFixture).filter((s) => s.time !== '12:00'); // punch a hole
+  const cells = alignSlots(axis, slots);
+
+  assert.equal(cells.length, axis.length); // 30, unchanged
+  const idx = axis.indexOf('12:00');
+  assert.equal(cells[idx], null);
+  // Neighbours still present.
+  assert.ok(cells[idx - 1] && cells[idx - 1].time === '11:30');
+  assert.ok(cells[idx + 1] && cells[idx + 1].time === '12:30');
 });
 
-test('duplicate cards for the same room collapse to one room (dedupe by room code)', () => {
-  const html = `
-    <div class="card-body"><div class="resourceName">LT-1A/Lecture Theatre</div>
-      <div> Capacity: 120</div></div>
-    <div class="card-body"><div class="resourceName">LT-1A/Lecture Theatre</div>
-      <div> Capacity: 120</div></div>
-  `;
-  const rooms = parseResults(html);
-  assert.equal(rooms.length, 1);
-  assert.equal(rooms[0].room, 'LT-1A');
-  assert.equal(rooms[0].type, 'Lecture Theatre');
-  assert.equal(rooms[0].capacity, 120);
-});
-
-test('inline text/table-row shape still works as a fallback', () => {
-  // No cards present -> fall back to inline "NAME/TYPE Capacity: N" rows.
-  const html = `
-    <table>
-      <tr><td><span>SR-03-07/Seminar Room Capacity: 40 Seminar Room A</span></td></tr>
-    </table>
-  `;
-  const rooms = parseResults(html);
-  assert.equal(rooms.length, 1);
-  assert.deepEqual(rooms[0], {
-    name: 'SR-03-07/Seminar Room',
-    room: 'SR-03-07',
-    type: 'Seminar Room',
-    capacity: 40,
-  });
-});
-
-test('buildSearchPlan returns ordered control mutations with the right option texts', () => {
-  const plan = buildSearchPlan({
-    roomType: 'Discussion Room',
-    date: '22 Oct 2026',
-    start: '14:00',
-    end: '16:00',
-    minCapacity: 6,
-    knownRoomTypes: ['Discussion Room', 'Seminar Room', 'ICT Laboratory'],
+// 5. buildSearchPayload.
+test('buildSearchPayload: ResourceType is option TEXT; bookingstatus/BookingStatus equal; all keys present', () => {
+  const p = buildSearchPayload({
+    token: 'TOK',
+    capacityOperator: 'between',
+    campusID: 'CMP',
+    buildingID: 'BLD',
+    status: 'All',
+    resourceType: 'Discussion Room',
+    date: '24 Oct 2026',
+    start: '07:00',
+    end: '22:30',
   });
 
-  assert.equal(plan.settleMs, 1200);
-  assert.equal(plan.minCapacity, 6);
-  assert.equal(plan.status, 'Available');
+  assert.equal(p.ResourceType, 'Discussion Room');
+  assert.equal(p.bookingstatus, 'All');
+  assert.equal(p.BookingStatus, 'All');
+  assert.equal(p.bookingstatus, p.BookingStatus);
+  assert.equal(p.__RequestVerificationToken, 'TOK');
+  assert.equal(p.CapacityOperator, 'between');
+  assert.equal(p.campusID, 'CMP');
+  assert.equal(p.buildingID, 'BLD');
+  assert.equal(p.SearchDate, '24 Oct 2026');
+  assert.equal(p.SearchStartTime, '07:00');
+  assert.equal(p.SearchEndTime, '22:30');
 
-  assert.deepEqual(
-    plan.mutations.map((m) => [m.id, m.kind, m.value]),
-    [
-      ['resourceType', 'select-by-text', 'Discussion Room'],
-      ['searchSlotDate', 'set-text', '22 Oct 2026'],
-      ['SearchHoursFrom', 'select-by-text', '14:00'],
-      ['SearchHoursTo', 'select-by-text', '16:00'],
-      ['bookingstatus', 'select-by-text', 'Available'],
-    ]
-  );
-});
-
-test('buildSearchPlan rejects an unknown room type with a clear message', () => {
-  assert.throws(
-    () =>
-      buildSearchPlan({
-        roomType: 'Dungeon',
-        date: '22 Oct 2026',
-        start: '14:00',
-        end: '16:00',
-        knownRoomTypes: ['Discussion Room', 'Seminar Room'],
-      }),
-    /Unknown room type "Dungeon"/
-  );
-});
-
-test('buildSearchPlan rejects an end time before start with a clear message', () => {
-  assert.throws(
-    () =>
-      buildSearchPlan({
-        roomType: 'Seminar Room',
-        date: '22 Oct 2026',
-        start: '16:00',
-        end: '14:00',
-      }),
-    /End time \(14:00\) must be after start time \(16:00\)/
-  );
-});
-
-test('formatDate formats as "D Mon YYYY"', () => {
-  assert.equal(formatDate(new Date(2026, 9, 22)), '22 Oct 2026');
-});
-
-test('formatWindow joins with an en dash', () => {
-  assert.equal(formatWindow('14:00', '16:00'), '14:00\u201316:00');
-});
-
-test('classifyEmpty distinguishes all-booked from no-such-rooms (confirmed reads)', () => {
-  assert.equal(classifyEmpty({ rowsWithAll: 3, rowsAvailable: 0 }), 'all booked');
-  assert.equal(classifyEmpty({ rowsWithAll: 0, rowsAvailable: 0 }), 'no such rooms');
-  assert.equal(classifyEmpty({ rowsWithAll: 5, rowsAvailable: 2 }), 'has availability');
-});
-
-test('classifyEmpty never turns an UNCONFIRMED zero into a verdict', () => {
-  // The exact bug: zero available because the read happened before render.
-  assert.equal(
-    classifyEmpty({ rowsWithAll: 0, rowsAvailable: 0, availableConfirmed: false }),
-    'unconfirmed'
-  );
-  // Available confirmed empty, but the All read timed out -> still unconfirmed.
-  assert.equal(
-    classifyEmpty({
-      rowsWithAll: 0,
-      rowsAvailable: 0,
-      availableConfirmed: true,
-      allConfirmed: false,
-    }),
-    'unconfirmed'
-  );
-  // Confirmed both ways still resolves normally.
-  assert.equal(
-    classifyEmpty({
-      rowsWithAll: 2,
-      rowsAvailable: 0,
-      availableConfirmed: true,
-      allConfirmed: true,
-    }),
-    'all booked'
-  );
-});
-
-test('filterAndSortRooms drops rooms below min capacity', () => {
-  const rooms = parseResults(fixtureHtml); // 4 rooms, all capacity 8
-  assert.equal(filterAndSortRooms(rooms, 10).length, 0);
-  assert.equal(filterAndSortRooms(rooms, 8).length, 4);
-});
-
-test('filterAndSortRooms sorts by capacity descending, then room code', () => {
-  const rooms = [
-    { name: 'C-3/Room', room: 'C-3', type: 'Room', capacity: 10 },
-    { name: 'A-1/Room', room: 'A-1', type: 'Room', capacity: 50 },
-    { name: 'B-2/Room', room: 'B-2', type: 'Room', capacity: 10 },
+  // Every documented key present (empty string allowed).
+  const expectedKeys = [
+    '__RequestVerificationToken', 'CapacityOperator', 'SingleCapacity',
+    'MinCapacity', 'MaxCapacity', 'campusID', 'buildingID', 'bookingstatus',
+    'BookingStatus', 'faciequip', 'Search', 'ResourceType', 'Location',
+    'LocationID', 'SearchDate', 'SearchStartTime', 'SearchEndTime',
   ];
-  const sorted = filterAndSortRooms(rooms, 0);
-  assert.deepEqual(
-    sorted.map((r) => [r.room, r.capacity]),
-    [
-      ['A-1', 50],
-      ['B-2', 10],
-      ['C-3', 10],
-    ]
+  for (const k of expectedKeys) {
+    assert.ok(Object.prototype.hasOwnProperty.call(p, k), `missing key ${k}`);
+    assert.equal(typeof p[k], 'string', `key ${k} must be a string`);
+  }
+});
+
+// 6. buildSlotPayload.
+test('buildSlotPayload: BKG_RUL/IS_SLD_Resource come from the room; bookingstatus is All', () => {
+  const room = parseRooms(searchFixture)[0]; // isBkgrul true, isSld false
+  const p = buildSlotPayload(room, '24 Oct 2026', { start: '07:00', end: '22:30' }, 'All', 'TOK');
+
+  assert.equal(p.rsrcID, room.id);
+  assert.equal(p.rsrctypID, room.typeId);
+  assert.equal(p.bookingstatus, 'All');
+  assert.equal(p.SearchDate, '24 Oct 2026');
+  assert.equal(p.SearchStartTime, '07:00');
+  assert.equal(p.SearchEndTime, '22:30');
+  assert.equal(p.BKG_RUL, 'true'); // from room.isBkgrul
+  assert.equal(p.IS_SLD_Resource, 'false'); // from room.isSld
+  assert.equal(p.__RequestVerificationToken, 'TOK');
+});
+
+// 7. classifyEmpty.
+test('classifyEmpty distinguishes no-rooms from all-taken from has-availability', () => {
+  assert.equal(classifyEmpty({ rooms: 0 }), 'no rooms match these filters');
+
+  // 6 rooms, every cell taken.
+  const allTaken = Array.from({ length: 6 }, () =>
+    Array.from({ length: 30 }, () => ({ state: 'taken' }))
   );
+  assert.equal(classifyEmpty({ rooms: 6, cells: allTaken }), 'all slots taken in this window');
+
+  // Some free cell present.
+  const someFree = [[{ state: 'taken' }, { state: 'free' }]];
+  assert.equal(classifyEmpty({ rooms: 2, cells: someFree }), 'has availability');
 });
 
-test('resultsSignature changes when cards appear or names differ', () => {
-  const empty = resultsSignature({ cardCount: 0, names: [], noResults: false });
-  const three = resultsSignature({ cardCount: 3, names: ['A', 'B', 'C'], noResults: false });
-  const threeOther = resultsSignature({ cardCount: 3, names: ['X', 'Y', 'Z'], noResults: false });
-  assert.notEqual(empty, three);
-  assert.notEqual(three, threeOther);
-  const noRes = resultsSignature({ cardCount: 0, names: [], noResults: true });
-  assert.notEqual(empty, noRes);
-});
-
-test('hasNoResultsText detects the persistent toast', () => {
-  assert.equal(hasNoResultsText('... No resources with available time slots found ...'), true);
-  assert.equal(hasNoResultsText('34 rooms'), false);
-});
-
-test('pollForResults: 3 empty reads then a card read resolves as rendered', async () => {
-  // Pre-click signature: empty page.
-  const preSignature = resultsSignature(EMPTY_LOADING);
-  const { read, now, sleep } = makePoller([
-    EMPTY_LOADING, // immediate check
-    EMPTY_LOADING,
-    EMPTY_LOADING,
-    CARD(34), // cards finally appear (~5 s in)
-  ]);
-  const res = await pollForResults({
-    read,
-    now,
-    sleep,
-    preSignature,
-    timeoutMs: 15000,
-    pollMs: 250,
-  });
-  assert.equal(res.status, 'rendered');
-  assert.equal(res.rendered, true);
-  assert.equal(res.timedOut, false);
-  assert.equal(res.snapshot.cardCount, 34);
-  assert.ok(res.waitedMs > 0, 'reports a non-zero wait');
-});
-
-test('pollForResults: 3 reads then the no-results marker resolves as empty-confirmed', async () => {
-  const preSignature = resultsSignature(EMPTY_LOADING);
-  const { read, now, sleep } = makePoller([
-    EMPTY_LOADING,
-    EMPTY_LOADING,
-    EMPTY_LOADING,
-    EMPTY_DONE_NO_RESULTS, // marker present AND page finished
-  ]);
-  const res = await pollForResults({ read, now, sleep, preSignature, timeoutMs: 15000, pollMs: 250 });
-  assert.equal(res.status, 'empty-confirmed');
-  assert.equal(res.emptyConfirmed, true);
-  assert.equal(res.rendered, false);
-  assert.equal(res.timedOut, false);
-});
-
-test('pollForResults: all-empty reads until timeout resolve as timedOut, never empty', async () => {
-  const preSignature = resultsSignature(EMPTY_LOADING);
-  // Never renders and the marker never appears (page stays "loading").
-  const { read, now, sleep } = makePoller([EMPTY_LOADING], { step: 250 });
-  const res = await pollForResults({ read, now, sleep, preSignature, timeoutMs: 1000, pollMs: 250 });
-  assert.equal(res.status, 'timedOut');
-  assert.equal(res.timedOut, true);
-  assert.equal(res.rendered, false);
-  assert.equal(res.emptyConfirmed, false);
-  // Critical: a timed-out read is NOT an empty-confirmed read.
-  assert.notEqual(res.status, 'empty-confirmed');
-  assert.ok(res.waitedMs >= 1000, 'waited at least the timeout');
-});
-
-test('pollForResults: a no-results marker that appears while page still loading is NOT trusted', async () => {
-  // The toast can persist across searches (rule 5); if the page has not finished
-  // re-rendering, the marker alone must not resolve as empty-confirmed.
-  const preSignature = resultsSignature(EMPTY_LOADING);
-  const stillLoadingWithMarker = {
-    cardCount: 0,
-    names: [],
-    noResults: true,
-    readyComplete: false, // not done yet
-    searchDisabled: true,
+// Helpers for the queue tests: a fetcher that records concurrency and defers.
+function makeFakeFetcher() {
+  let inFlight = 0;
+  let maxInFlight = 0;
+  let calls = 0;
+  const fetcher = async (room) => {
+    inFlight += 1;
+    if (inFlight > maxInFlight) maxInFlight = inFlight;
+    calls += 1;
+    // Yield a couple of microtasks so any accidental parallelism would overlap.
+    await Promise.resolve();
+    await Promise.resolve();
+    const slots = parseSlots(slotsFixture);
+    inFlight -= 1;
+    return slots.map((s) => ({ ...s, _room: room.id }));
   };
-  const { read, now, sleep } = makePoller([stillLoadingWithMarker], { step: 250 });
-  const res = await pollForResults({ read, now, sleep, preSignature, timeoutMs: 1000, pollMs: 250 });
-  assert.equal(res.status, 'timedOut');
+  return {
+    fetcher,
+    get maxInFlight() { return maxInFlight; },
+    get calls() { return calls; },
+  };
+}
+
+// 8. Queue concurrency + cache.
+test('slot queue runs strictly single-flight; second pass is all cache hits (0 fetches)', async () => {
+  const rooms = parseRooms(searchFixture).slice(0, 5);
+  const fake = makeFakeFetcher();
+  const cache = new Map();
+  const loaded = [];
+
+  const q = createSlotQueue({
+    fetcher: fake.fetcher,
+    date: '24 Oct 2026',
+    window: { start: '07:00', end: '22:30' },
+    status: 'All',
+    cache,
+    onLoaded: (id) => loaded.push(id),
+  });
+
+  q.enqueue(rooms);
+  await q.run();
+
+  // Never more than one fetch in flight at once, across all 5 rooms.
+  assert.equal(fake.maxInFlight, 1);
+  assert.equal(q.stats.maxInFlight, 1);
+  assert.equal(fake.calls, 5);
+  assert.equal(q.stats.fetches, 5);
+  assert.equal(loaded.length, 5);
+
+  // Second pass over the same rooms: every room is cached -> 0 new fetches.
+  const callsBefore = fake.calls;
+  q.enqueue(rooms);
+  await q.run();
+  assert.equal(fake.calls, callsBefore, 'no new fetches on the cached pass');
+  assert.equal(fake.calls - callsBefore, 0);
+});
+
+// 9. Stale generation.
+test('bumping generation after the first resolves discards the remaining results', async () => {
+  const rooms = parseRooms(searchFixture).slice(0, 3);
+
+  // A fetcher we can release one at a time so we control timing precisely.
+  const releases = [];
+  let calls = 0;
+  const fetcher = (room) =>
+    new Promise((resolve) => {
+      calls += 1;
+      releases.push(() => resolve([{ time: '07:00', state: 'free', _room: room.id }]));
+    });
+
+  const painted = [];
+  const q = createSlotQueue({
+    fetcher,
+    date: '24 Oct 2026',
+    window: { start: '07:00', end: '22:30' },
+    status: 'All',
+    onLoaded: (id) => painted.push(id),
+  });
+
+  q.enqueue(rooms);
+  const draining = q.run();
+
+  // Let the first fetch start and resolve.
+  await Promise.resolve();
+  assert.equal(calls, 1, 'exactly one request started (single-flight)');
+  releases[0]();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  // Now a filter changed: bump the generation. The remaining two rooms must
+  // not be painted even if their (now-stale) responses arrive.
+  q.bumpGeneration();
+
+  // Drain any already-started-but-stale request.
+  await Promise.resolve();
+  for (const rel of releases) rel();
+  await draining;
+
+  // Only the first room (fetched under the original generation) was painted.
+  assert.deepEqual(painted, [rooms[0].id]);
+  assert.equal(painted.length, 1);
 });
