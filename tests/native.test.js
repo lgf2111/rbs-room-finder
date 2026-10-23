@@ -13,7 +13,52 @@ const {
   formatWindow,
   classifyEmpty,
   filterAndSortRooms,
+  resultsSignature,
+  hasNoResultsText,
+  pollForResults,
 } = native;
+
+// A stub clock + reader that yields a scripted sequence of snapshots. now()
+// advances by `step` ms on every sleep() so timeouts are deterministic.
+function makePoller(snapshots, { step = 250, start = 0 } = {}) {
+  let t = start;
+  let i = 0;
+  const reads = [];
+  const read = () => {
+    // Clamp to the last snapshot once the script runs out.
+    const snap = snapshots[Math.min(i, snapshots.length - 1)];
+    reads.push(snap);
+    i += 1;
+    return snap;
+  };
+  const now = () => t;
+  const sleep = async (ms) => {
+    t += ms != null ? ms : step;
+  };
+  return { read, now, sleep, reads: () => reads };
+}
+
+const CARD = (n) => ({
+  cardCount: n,
+  names: Array.from({ length: n }, (_, k) => 'ROOM-' + k),
+  noResults: false,
+  readyComplete: true,
+  searchDisabled: false,
+});
+const EMPTY_LOADING = {
+  cardCount: 0,
+  names: [],
+  noResults: false,
+  readyComplete: false,
+  searchDisabled: true,
+};
+const EMPTY_DONE_NO_RESULTS = {
+  cardCount: 0,
+  names: [],
+  noResults: true,
+  readyComplete: true,
+  searchDisabled: false,
+};
 
 const fixtureHtml = fs.readFileSync(
   path.join(__dirname, 'fixtures', 'results.html'),
@@ -150,10 +195,38 @@ test('formatWindow joins with an en dash', () => {
   assert.equal(formatWindow('14:00', '16:00'), '14:00\u201316:00');
 });
 
-test('classifyEmpty distinguishes all-booked from no-such-rooms', () => {
+test('classifyEmpty distinguishes all-booked from no-such-rooms (confirmed reads)', () => {
   assert.equal(classifyEmpty({ rowsWithAll: 3, rowsAvailable: 0 }), 'all booked');
   assert.equal(classifyEmpty({ rowsWithAll: 0, rowsAvailable: 0 }), 'no such rooms');
   assert.equal(classifyEmpty({ rowsWithAll: 5, rowsAvailable: 2 }), 'has availability');
+});
+
+test('classifyEmpty never turns an UNCONFIRMED zero into a verdict', () => {
+  // The exact bug: zero available because the read happened before render.
+  assert.equal(
+    classifyEmpty({ rowsWithAll: 0, rowsAvailable: 0, availableConfirmed: false }),
+    'unconfirmed'
+  );
+  // Available confirmed empty, but the All read timed out -> still unconfirmed.
+  assert.equal(
+    classifyEmpty({
+      rowsWithAll: 0,
+      rowsAvailable: 0,
+      availableConfirmed: true,
+      allConfirmed: false,
+    }),
+    'unconfirmed'
+  );
+  // Confirmed both ways still resolves normally.
+  assert.equal(
+    classifyEmpty({
+      rowsWithAll: 2,
+      rowsAvailable: 0,
+      availableConfirmed: true,
+      allConfirmed: true,
+    }),
+    'all booked'
+  );
 });
 
 test('filterAndSortRooms drops rooms below min capacity', () => {
@@ -177,4 +250,88 @@ test('filterAndSortRooms sorts by capacity descending, then room code', () => {
       ['C-3', 10],
     ]
   );
+});
+
+test('resultsSignature changes when cards appear or names differ', () => {
+  const empty = resultsSignature({ cardCount: 0, names: [], noResults: false });
+  const three = resultsSignature({ cardCount: 3, names: ['A', 'B', 'C'], noResults: false });
+  const threeOther = resultsSignature({ cardCount: 3, names: ['X', 'Y', 'Z'], noResults: false });
+  assert.notEqual(empty, three);
+  assert.notEqual(three, threeOther);
+  const noRes = resultsSignature({ cardCount: 0, names: [], noResults: true });
+  assert.notEqual(empty, noRes);
+});
+
+test('hasNoResultsText detects the persistent toast', () => {
+  assert.equal(hasNoResultsText('... No resources with available time slots found ...'), true);
+  assert.equal(hasNoResultsText('34 rooms'), false);
+});
+
+test('pollForResults: 3 empty reads then a card read resolves as rendered', async () => {
+  // Pre-click signature: empty page.
+  const preSignature = resultsSignature(EMPTY_LOADING);
+  const { read, now, sleep } = makePoller([
+    EMPTY_LOADING, // immediate check
+    EMPTY_LOADING,
+    EMPTY_LOADING,
+    CARD(34), // cards finally appear (~5 s in)
+  ]);
+  const res = await pollForResults({
+    read,
+    now,
+    sleep,
+    preSignature,
+    timeoutMs: 15000,
+    pollMs: 250,
+  });
+  assert.equal(res.status, 'rendered');
+  assert.equal(res.rendered, true);
+  assert.equal(res.timedOut, false);
+  assert.equal(res.snapshot.cardCount, 34);
+  assert.ok(res.waitedMs > 0, 'reports a non-zero wait');
+});
+
+test('pollForResults: 3 reads then the no-results marker resolves as empty-confirmed', async () => {
+  const preSignature = resultsSignature(EMPTY_LOADING);
+  const { read, now, sleep } = makePoller([
+    EMPTY_LOADING,
+    EMPTY_LOADING,
+    EMPTY_LOADING,
+    EMPTY_DONE_NO_RESULTS, // marker present AND page finished
+  ]);
+  const res = await pollForResults({ read, now, sleep, preSignature, timeoutMs: 15000, pollMs: 250 });
+  assert.equal(res.status, 'empty-confirmed');
+  assert.equal(res.emptyConfirmed, true);
+  assert.equal(res.rendered, false);
+  assert.equal(res.timedOut, false);
+});
+
+test('pollForResults: all-empty reads until timeout resolve as timedOut, never empty', async () => {
+  const preSignature = resultsSignature(EMPTY_LOADING);
+  // Never renders and the marker never appears (page stays "loading").
+  const { read, now, sleep } = makePoller([EMPTY_LOADING], { step: 250 });
+  const res = await pollForResults({ read, now, sleep, preSignature, timeoutMs: 1000, pollMs: 250 });
+  assert.equal(res.status, 'timedOut');
+  assert.equal(res.timedOut, true);
+  assert.equal(res.rendered, false);
+  assert.equal(res.emptyConfirmed, false);
+  // Critical: a timed-out read is NOT an empty-confirmed read.
+  assert.notEqual(res.status, 'empty-confirmed');
+  assert.ok(res.waitedMs >= 1000, 'waited at least the timeout');
+});
+
+test('pollForResults: a no-results marker that appears while page still loading is NOT trusted', async () => {
+  // The toast can persist across searches (rule 5); if the page has not finished
+  // re-rendering, the marker alone must not resolve as empty-confirmed.
+  const preSignature = resultsSignature(EMPTY_LOADING);
+  const stillLoadingWithMarker = {
+    cardCount: 0,
+    names: [],
+    noResults: true,
+    readyComplete: false, // not done yet
+    searchDisabled: true,
+  };
+  const { read, now, sleep } = makePoller([stillLoadingWithMarker], { step: 250 });
+  const res = await pollForResults({ read, now, sleep, preSignature, timeoutMs: 1000, pollMs: 250 });
+  assert.equal(res.status, 'timedOut');
 });

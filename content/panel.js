@@ -29,12 +29,17 @@
   const {
     RBS_CONTROL_IDS,
     POSTBACK_SETTLE_MS,
+    RESULTS_POLL_TIMEOUT_MS,
+    RESULTS_POLL_INTERVAL_MS,
     formatDate,
     formatWindow,
     buildSearchPlan,
     parseResults,
     filterAndSortRooms,
     classifyEmpty,
+    hasNoResultsText,
+    resultsSignature,
+    pollForResults,
   } = N;
 
   // Guard: if native.js failed to load, do nothing rather than throw on page.
@@ -185,10 +190,48 @@
     return bad;
   }
 
+  // Read a snapshot of the live results region for pollForResults().
+  function readResultsSnapshot() {
+    const cards = Array.from(document.querySelectorAll('.resourceName'));
+    const names = cards.map((n) => (n.textContent || '').replace(/\s+/g, ' ').trim());
+    const bodyText = document.body ? document.body.textContent || '' : '';
+    const btn = document.getElementById(RBS_CONTROL_IDS.searchButton);
+    return {
+      cardCount: cards.length,
+      names,
+      noResults: hasNoResultsText(bodyText),
+      readyComplete: document.readyState === 'complete',
+      searchDisabled: !!(btn && btn.disabled),
+    };
+  }
+
+  // The HTML to parse: prefer the results container (nearest common ancestor of
+  // the .resourceName cards), else the whole body.
+  function resultsHtml() {
+    const cards = Array.from(document.querySelectorAll('.resourceName'));
+    if (cards.length === 0) {
+      return document.body ? document.body.innerHTML : '';
+    }
+    // Walk up from the first card until an ancestor contains ALL cards.
+    let node = cards[0];
+    while (node && node.parentElement) {
+      const parent = node.parentElement;
+      if (cards.every((c) => parent.contains(c))) {
+        // One more level up is usually the list wrapper; this parent already
+        // contains every card, so it is a safe, tight container.
+        return parent.innerHTML;
+      }
+      node = parent;
+    }
+    return document.body ? document.body.innerHTML : '';
+  }
+
   // Drive all controls with the settle + re-read-before-click rules, then click
-  // Search and wait for the re-render. After clicking, re-read once more.
+  // Search and POLL for the re-render (a fixed sleep is both too short for a
+  // slow postback and wasteful on a fast one). Capture HTML AFTER the wait.
   //
-  // @returns {Promise<{trusted: boolean, mismatched: Array}>}
+  // @returns {Promise<{trusted, mismatched, html, rowCount, waitedMs, timedOut,
+  //                    rendered, emptyConfirmed, reason}>}
   async function runNativeSearch(plan, onProgress) {
     // 1. Apply each mutation, waiting POSTBACK_SETTLE_MS after each (rule 1).
     for (let i = 0; i < plan.mutations.length; i++) {
@@ -210,22 +253,74 @@
       mismatched = verifyMutations(plan.mutations);
       // Only click if the window is now correct (rule 2).
       if (mismatched.length) {
-        return { trusted: false, mismatched, html: null };
+        return { trusted: false, mismatched, html: null, rowCount: 0, reason: 'controls reset' };
       }
     }
 
-    // 3. Click Search and wait for the re-render.
-    const btn = document.getElementById(RBS_CONTROL_IDS.searchButton);
-    if (!btn) return { trusted: false, mismatched: [{ id: RBS_CONTROL_IDS.searchButton }], html: null };
-    if (onProgress) onProgress('Searching\u2026');
-    btn.click();
-    await sleep(plan.settleMs);
+    // 3. Take a pre-click signature so we can detect a genuine re-render.
+    const preSig = resultsSignature(readResultsSnapshot());
 
-    // 4. After results render, re-read the selectors. They must still show the
-    //    requested window; otherwise mark the result untrusted (rule 3).
+    const btn = document.getElementById(RBS_CONTROL_IDS.searchButton);
+    if (!btn) {
+      return {
+        trusted: false,
+        mismatched: [{ id: RBS_CONTROL_IDS.searchButton }],
+        html: null,
+        rowCount: 0,
+        reason: 'search button missing',
+      };
+    }
+    if (onProgress) onProgress('Searching \u2014 waiting for RBS to render\u2026');
+    btn.click();
+
+    // 4. Poll (up to 15 s) for the results to actually re-render. A zero-row
+    //    read is only trusted if the no-results marker is really present after
+    //    the page finishes; otherwise it is a too-early read (untrusted).
+    const poll = await pollForResults({
+      read: readResultsSnapshot,
+      now: () => Date.now(),
+      sleep: (ms) => sleep(ms),
+      preSignature: preSig,
+      timeoutMs: RESULTS_POLL_TIMEOUT_MS,
+      pollMs: RESULTS_POLL_INTERVAL_MS,
+    });
+
+    const secs = (poll.waitedMs / 1000).toFixed(1);
+    if (onProgress) {
+      onProgress(`Searching \u2014 waiting for RBS to render (took ${secs} s)`);
+    }
+
+    if (poll.timedOut) {
+      return {
+        trusted: false,
+        mismatched: [],
+        html: null,
+        rowCount: 0,
+        waitedMs: poll.waitedMs,
+        timedOut: true,
+        rendered: false,
+        emptyConfirmed: false,
+        reason: 'results never rendered',
+      };
+    }
+
+    // 5. Re-read the selectors; they must still show the requested window,
+    //    otherwise the result answers a different question (rule 3).
     const afterMismatch = verifyMutations(plan.mutations);
-    const html = document.body ? document.body.innerHTML : '';
-    return { trusted: afterMismatch.length === 0, mismatched: afterMismatch, html };
+    const html = resultsHtml();
+    const rooms = parseResults(html);
+
+    return {
+      trusted: afterMismatch.length === 0,
+      mismatched: afterMismatch,
+      html,
+      rowCount: rooms.length,
+      waitedMs: poll.waitedMs,
+      timedOut: false,
+      rendered: poll.rendered,
+      emptyConfirmed: poll.emptyConfirmed,
+      reason: afterMismatch.length === 0 ? null : 'controls drifted after render',
+    };
   }
 
   // Ids / text that must NEVER be clicked by us (they commit a booking).
@@ -598,7 +693,8 @@
     ui.reuseWrap.className = 'rbs-reuse rbs-visible';
   }
 
-  // Run a search for a given status and return parsed rooms + trust + rowCount.
+  // Run a search for a given status and return parsed rooms + trust + rowCount
+  // + whether the (possibly zero) read was confirmed post-render.
   async function searchOnce(form, status, onProgress) {
     const plan = buildSearchPlan({
       roomType: form.roomType,
@@ -610,11 +706,43 @@
       knownRoomTypes: readRoomTypes(),
     });
     const res = await runNativeSearch(plan, onProgress);
-    if (!res.trusted) {
-      return { trusted: false, mismatched: res.mismatched, rooms: [], rowCount: 0 };
+
+    if (res.timedOut) {
+      return {
+        trusted: false,
+        timedOut: true,
+        confirmed: false,
+        reason: res.reason || 'results never rendered',
+        rooms: [],
+        rowCount: 0,
+        waitedMs: res.waitedMs || 0,
+      };
     }
+    if (!res.trusted) {
+      return {
+        trusted: false,
+        timedOut: false,
+        confirmed: false,
+        mismatched: res.mismatched,
+        reason: res.reason,
+        rooms: [],
+        rowCount: 0,
+        waitedMs: res.waitedMs || 0,
+      };
+    }
+
     const rooms = parseResults(res.html || '');
-    return { trusted: true, rooms, rowCount: rooms.length, minCapacity: plan.minCapacity };
+    // A zero-row read is "confirmed" only if the no-results marker rendered.
+    const confirmed = rooms.length > 0 || res.emptyConfirmed === true;
+    return {
+      trusted: true,
+      timedOut: false,
+      confirmed,
+      rooms,
+      rowCount: rooms.length,
+      minCapacity: plan.minCapacity,
+      waitedMs: res.waitedMs || 0,
+    };
   }
 
   async function onSearch() {
@@ -633,15 +761,25 @@
     ui.resultsBox.textContent = '';
     const windowLabel = formatWindow(form.start, form.end);
 
+    const secs = (ms) => (Number(ms) / 1000).toFixed(1);
+
     try {
-      setStatus('info', 'Searching \u2014 driving the native controls\u2026');
+      setStatus('info', 'Searching \u2014 waiting for RBS to render\u2026');
       const avail = await searchOnce(form, 'Available', (p) => setStatus('info', p));
 
-      if (!avail.trusted) {
-        const ids = avail.mismatched.map((m) => '#' + m.id).join(', ');
+      // A read that never rendered must be reported as unconfirmed, NOT as a
+      // verdict. This is the fix for the confident-wrong-answer bug.
+      if (avail.timedOut) {
         setStatus('warn',
-          'Result not trusted: the native controls reset mid-search (' + ids +
-          '). Try Search again.');
+          `Could not confirm: RBS did not finish rendering within ${secs(RESULTS_POLL_TIMEOUT_MS)} s ` +
+          `(waited ${secs(avail.waitedMs)} s). No verdict shown \u2014 try Search again.`);
+        return;
+      }
+      if (!avail.trusted) {
+        const ids = (avail.mismatched || []).map((m) => '#' + m.id).join(', ');
+        setStatus('warn',
+          'Result not trusted: the native controls reset mid-search' +
+          (ids ? ' (' + ids + ')' : '') + '. Try Search again.');
         return;
       }
 
@@ -649,30 +787,57 @@
 
       if (filtered.length > 0) {
         setStatus('info',
-          `${filtered.length} room(s) free for the entire window ${windowLabel}.`);
+          `${filtered.length} room(s) free for the entire window ${windowLabel} ` +
+          `(rendered in ${secs(avail.waitedMs)} s).`);
         renderResults(filtered, windowLabel);
         saveLastSearch(form);
         showReuseChip(form);
         return;
       }
 
-      // Zero available rows. Distinguish "all booked" vs "no such rooms" by
-      // re-running the SAME window with bookingstatus=All exactly once (rule).
-      setStatus('info', 'None free \u2014 checking whether they are booked or absent\u2026');
-      const all = await searchOnce(form, 'All', (p) => setStatus('info', p));
-
-      if (!all.trusted) {
-        setStatus('warn', 'Could not confirm (controls reset during the All check). Try again.');
+      // Zero available rows. Only meaningful if the empty read was confirmed by
+      // the no-results marker rendering; otherwise bail out as unconfirmed.
+      if (!avail.confirmed) {
+        setStatus('warn',
+          `Could not confirm there are no free rooms (the empty read was not verified ` +
+          `after render). No verdict shown \u2014 try Search again.`);
         return;
       }
 
-      const verdict = classifyEmpty({ rowsWithAll: all.rowCount, rowsAvailable: avail.rowCount });
+      // Distinguish "all booked" vs "no such rooms" by re-running the SAME
+      // window with bookingstatus=All exactly once (rule).
+      setStatus('info', 'None free \u2014 checking whether they are booked or absent\u2026');
+      const all = await searchOnce(form, 'All', (p) => setStatus('info', p));
+
+      if (all.timedOut) {
+        setStatus('warn',
+          `Could not confirm: the all-rooms check did not render within ` +
+          `${secs(RESULTS_POLL_TIMEOUT_MS)} s. No verdict shown \u2014 try Search again.`);
+        return;
+      }
+      if (!all.trusted) {
+        setStatus('warn', 'Could not confirm (controls reset during the all-rooms check). Try again.');
+        return;
+      }
+
+      const verdict = classifyEmpty({
+        rowsWithAll: all.rowCount,
+        rowsAvailable: avail.rowCount,
+        availableConfirmed: avail.confirmed,
+        allConfirmed: all.confirmed,
+      });
+
       if (verdict === 'all booked') {
         setStatus('warn',
           `All ${form.roomType} rooms are booked for ${windowLabel} on ${form.date}.`);
-      } else {
+      } else if (verdict === 'no such rooms') {
         setStatus('warn',
           `No such rooms: there are no ${form.roomType} rooms for ${form.date}.`);
+      } else {
+        // 'unconfirmed' (or 'has availability' edge): do not assert a verdict.
+        setStatus('warn',
+          'Could not confirm whether these rooms are booked or absent. Try Search again.');
+        return;
       }
       saveLastSearch(form);
       showReuseChip(form);

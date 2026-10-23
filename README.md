@@ -84,9 +84,27 @@ obeys these rules, which must not be weakened:
 2. It re-reads all four values (type, date, start, end) **before** clicking
    Search. If a change was still in flight the native selects silently reset,
    so it sets them again and only then clicks.
-3. After results render it re-reads the selectors. If they no longer show the
+3. It does **not** read the results after a fixed sleep. Clicking Search fires a
+   full WebForms postback whose re-render can take ~4–6 s on this site, so a
+   fixed 1.2 s read captures the page *before* the results exist and would report
+   a false "all booked". Instead the driver takes a signature of the results
+   region before the click (the `.resourceName` card count, the concatenated
+   room names, and whether the no-resources toast is present), clicks, then
+   **polls every 250 ms up to a 15 s ceiling** until either a different card
+   signature appears (results rendered) or the no-resources marker is present
+   *and* the page has finished re-rendering (`document.readyState === 'complete'`
+   and the search button is not disabled). The results HTML is captured *after*
+   that wait, from the results container rather than the whole body. The same
+   polling wait is applied to the `bookingstatus=All` follow-up check.
+4. A zero-row read is only ever a real answer if the no-resources marker
+   actually rendered. If the 15 s ceiling is hit without cards and without that
+   marker, the panel reports **"could not confirm"** and shows no verdict —
+   it never turns a too-early or timed-out read into "all booked" or
+   "no such rooms". The status line reports how long the render took, e.g.
+   `Searching — waiting for RBS to render (took 5.4 s)`.
+5. After results render it re-reads the selectors. If they no longer show the
    requested window, the result is marked untrusted in the UI rather than shown.
-4. Results on the live site are Bootstrap cards: the room name lives in
+6. Results on the live site are Bootstrap cards: the room name lives in
    `div.resourceName` as `NAME/TYPE` and the capacity lives in a following
    sibling as `Capacity: N`. The parser pairs each `resourceName` with the next
    `Capacity: N`, splits `NAME/TYPE` on the first `/` into `room` and `type`,
@@ -94,14 +112,14 @@ obeys these rules, which must not be weakened:
    (`NAME/TYPE Capacity: N` in one text node) is kept working as a fallback for
    text-only captures, but the card path is primary. No name ever carries
    `Capacity:`.
-5. `#resourceType` is a select2 widget — the visible element is a rendered span
+7. `#resourceType` is a select2 widget — the visible element is a rendered span
    and the real `<select>` is hidden and re-initialised after every postback.
    The driver sets the hidden `<select>` and dispatches a bubbling `change`, and
    **re-queries the element on every step** rather than caching it. Option
    values are matched by their visible text (never by position): `#resourceType`
    values are GUIDs, and `#SearchHoursFrom` starts at `00:00`, so "first option"
    is never assumed to be a particular time.
-6. The "No resources with available time slots found" toast persists across
+8. The "No resources with available time slots found" toast persists across
    searches, so the verdict is decided from the room count, never the toast.
 
 ## Design notes / decisions

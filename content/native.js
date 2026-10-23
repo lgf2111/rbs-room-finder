@@ -39,6 +39,15 @@ const RBS_CONTROL_IDS = Object.freeze({
 /** Milliseconds to wait after each control change so the postback re-renders. */
 const POSTBACK_SETTLE_MS = 1200;
 
+/** Ceiling for waiting on a Search postback to re-render (ms). */
+const RESULTS_POLL_TIMEOUT_MS = 15000;
+
+/** How often to poll for the re-rendered results (ms). */
+const RESULTS_POLL_INTERVAL_MS = 250;
+
+/** The persistent "nothing free" toast text (rule 5: it lies across searches). */
+const NO_RESULTS_RE = /No resources with available time slots found/i;
+
 const MONTHS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
@@ -353,27 +362,166 @@ function filterAndSortRooms(rooms, minCapacity) {
 }
 
 /**
- * Decide what an empty "Available" result means.
+ * Decide what an empty "Available" result means — STRICTLY.
  *
  * The RBS "No resources ... found" toast persists across searches (rule 5), so
- * we must decide from row counts only. We re-run the same window with
- * bookingstatus=All: if that has rows, the category/date HAS rooms but they are
- * taken for the window -> "all booked". If even All has zero rows, the
- * category/date simply has nothing -> "no such rooms".
+ * we decide from row counts, not the toast. BUT a zero-row count is only
+ * meaningful if that read was confirmed AFTER the postback re-rendered. A zero
+ * that came from a read that timed out (results never rendered) must NEVER be
+ * turned into "all booked" or "no such rooms" — that is the confident-wrong-
+ * answer failure. Such a case returns "unconfirmed".
+ *
+ * We re-run the same window with bookingstatus=All: if that has rows, the
+ * category/date HAS rooms but they are taken for the window -> "all booked".
+ * If even All has zero (confirmed) rows, the category/date has nothing ->
+ * "no such rooms".
  *
  * @param {object} counts
- * @param {number} counts.rowsWithAll     rooms found with bookingstatus=All
- * @param {number} counts.rowsAvailable   rooms found with bookingstatus=Available
- * @returns {"all booked"|"no such rooms"|"has availability"}
+ * @param {number}  counts.rowsWithAll        rooms found with bookingstatus=All
+ * @param {number}  counts.rowsAvailable      rooms found with bookingstatus=Available
+ * @param {boolean} [counts.availableConfirmed=true] the Available read rendered
+ * @param {boolean} [counts.allConfirmed=true]       the All read rendered
+ * @returns {"has availability"|"all booked"|"no such rooms"|"unconfirmed"}
  */
 function classifyEmpty(counts) {
   counts = counts || {};
   const rowsWithAll = Number(counts.rowsWithAll) || 0;
   const rowsAvailable = Number(counts.rowsAvailable) || 0;
 
+  // Default to confirmed only when explicitly true or omitted (back-compat),
+  // but treat an explicit false as untrusted.
+  const availableConfirmed = counts.availableConfirmed !== false;
+  const allConfirmed = counts.allConfirmed !== false;
+
   if (rowsAvailable > 0) return 'has availability';
+
+  // A zero from an unconfirmed Available read is not a real "none free".
+  if (!availableConfirmed) return 'unconfirmed';
+
   if (rowsWithAll > 0) return 'all booked';
+
+  // Zero on All, but only trust it if the All read was confirmed.
+  if (!allConfirmed) return 'unconfirmed';
   return 'no such rooms';
+}
+
+/**
+ * Does the given text contain the persistent "no resources" marker?
+ * @param {string} text
+ * @returns {boolean}
+ */
+function hasNoResultsText(text) {
+  return NO_RESULTS_RE.test(String(text == null ? '' : text));
+}
+
+/**
+ * Build a comparable signature of the current results region.
+ *
+ * Used to detect when a Search postback has actually re-rendered: the card
+ * count AND the concatenated room names must change (or the no-results marker
+ * must appear) relative to the pre-click signature.
+ *
+ * @param {object} snap
+ * @param {number} snap.cardCount        number of .resourceName cards
+ * @param {string[]} [snap.names]        the room-name texts, in order
+ * @param {boolean} snap.noResults       is the no-resources marker present?
+ * @returns {string}
+ */
+function resultsSignature(snap) {
+  snap = snap || {};
+  const count = Number(snap.cardCount) || 0;
+  const names = Array.isArray(snap.names) ? snap.names : [];
+  const noRes = snap.noResults ? '1' : '0';
+  return `${count}|${noRes}|${names.join('\u241f')}`;
+}
+
+/**
+ * Poll for a re-rendered results region after a Search click.
+ *
+ * Pure and testable: all side effects are injected.
+ *  - read():  returns a snapshot
+ *             { cardCount, names, noResults, readyComplete, searchDisabled }
+ *  - now():   returns a millisecond timestamp (monotonic enough for tests)
+ *  - sleep(ms): resolves after ms (tests pass an instant stub)
+ *
+ * Resolution rules:
+ *  - "rendered": the card signature differs from the pre-click signature AND
+ *    there is at least one card. (Cards appeared / changed.)
+ *  - "empty-confirmed": the no-results marker is present AND the page has
+ *    finished re-rendering (readyComplete && !searchDisabled), with zero cards.
+ *  - "timedOut": neither happened before timeoutMs. The caller must treat this
+ *    as UNTRUSTED — never as a real zero.
+ *
+ * @param {object} deps
+ * @param {() => object} deps.read
+ * @param {() => number} deps.now
+ * @param {(ms:number)=>Promise<void>} deps.sleep
+ * @param {string} deps.preSignature            signature taken BEFORE the click
+ * @param {number} [deps.timeoutMs]
+ * @param {number} [deps.pollMs]
+ * @returns {Promise<{status:string, snapshot:object, signature:string, waitedMs:number, rendered:boolean, emptyConfirmed:boolean, timedOut:boolean}>}
+ */
+async function pollForResults(deps) {
+  deps = deps || {};
+  const read = deps.read;
+  const now = deps.now;
+  const sleep = deps.sleep;
+  const preSignature = deps.preSignature == null ? '' : String(deps.preSignature);
+  const timeoutMs = Number.isFinite(deps.timeoutMs) ? deps.timeoutMs : RESULTS_POLL_TIMEOUT_MS;
+  const pollMs = Number.isFinite(deps.pollMs) ? deps.pollMs : RESULTS_POLL_INTERVAL_MS;
+
+  if (typeof read !== 'function' || typeof now !== 'function' || typeof sleep !== 'function') {
+    throw new Error('pollForResults: read(), now() and sleep() are required');
+  }
+
+  const start = now();
+  let snapshot = read();
+  let signature = resultsSignature(snapshot);
+
+  const settled = (snap, sig) => {
+    const pageDone = snap.readyComplete !== false && snap.searchDisabled !== true;
+    const cardCount = Number(snap.cardCount) || 0;
+
+    // Cards appeared or changed => rendered.
+    if (cardCount > 0 && sig !== preSignature) {
+      return { status: 'rendered', rendered: true, emptyConfirmed: false };
+    }
+    // No-results marker present AND page finished => empty, confirmed.
+    if (snap.noResults && pageDone) {
+      return { status: 'empty-confirmed', rendered: false, emptyConfirmed: true };
+    }
+    return null;
+  };
+
+  // Check immediately once (covers already-rendered pages in tests).
+  let verdict = settled(snapshot, signature);
+  while (!verdict) {
+    if (now() - start >= timeoutMs) {
+      return {
+        status: 'timedOut',
+        snapshot,
+        signature,
+        waitedMs: now() - start,
+        rendered: false,
+        emptyConfirmed: false,
+        timedOut: true,
+      };
+    }
+    await sleep(pollMs);
+    snapshot = read();
+    signature = resultsSignature(snapshot);
+    verdict = settled(snapshot, signature);
+  }
+
+  return {
+    status: verdict.status,
+    snapshot,
+    signature,
+    waitedMs: now() - start,
+    rendered: verdict.rendered,
+    emptyConfirmed: verdict.emptyConfirmed,
+    timedOut: false,
+  };
 }
 
 // --- Exports: browser (globalThis) AND Node (module.exports, guarded) --------
@@ -381,6 +529,9 @@ function classifyEmpty(counts) {
 const RBS_NATIVE = {
   RBS_CONTROL_IDS,
   POSTBACK_SETTLE_MS,
+  RESULTS_POLL_TIMEOUT_MS,
+  RESULTS_POLL_INTERVAL_MS,
+  NO_RESULTS_RE,
   formatDate,
   formatWindow,
   timeToMinutes,
@@ -393,6 +544,9 @@ const RBS_NATIVE = {
   parseResults,
   filterAndSortRooms,
   classifyEmpty,
+  hasNoResultsText,
+  resultsSignature,
+  pollForResults,
   normalizeText,
 };
 
