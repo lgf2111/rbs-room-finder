@@ -715,6 +715,51 @@ function shouldRevealNative(arg) {
   return (arg.consecutiveFailures || 0) >= 3;
 }
 
+// --- Self-check for panel.js UI references ---------------------------------
+
+/**
+ * Validate UI references object for required keys and element properties.
+ * Returns {ok: boolean, missing: string[]} listing keys that are null/undefined
+ * or elements missing the required properties (e.g., addEventListener).
+ * @param {object} refs
+ * @returns {{ok: boolean, missing: string[]}}
+ */
+function selfCheck(refs) {
+  if (!refs || typeof refs !== 'object') {
+    return { ok: false, missing: ['refs (null or non-object)'] };
+  }
+  
+  const required = [
+    'host', 'topbar', 'buildingSelect', 'typeSelect', 'capInput', 'searchInput',
+    'dateChips', 'startSelect', 'endSelect', 'sortSelect', 'refreshBtn', 
+    'nativeBtn', 'boardHeader', 'boardRows', 'statusBar'
+  ];
+  
+  const missing = [];
+  
+  for (const key of required) {
+    const val = refs[key];
+    if (val == null) {
+      missing.push(key);
+      continue;
+    }
+    
+    // For element references, verify they're actually DOM elements
+    // Only check addEventListener for elements that need it
+    if (key === 'dateChips') {
+      // dateChips is a container div, doesn't need addEventListener
+    } else if (key !== 'host' && key !== 'topbar' && key !== 'boardHeader' && 
+        key !== 'boardRows' && key !== 'statusBar') {
+      // Inputs, selects, buttons need addEventListener
+      if (typeof val.addEventListener !== 'function') {
+        missing.push(`${key} (not a DOM element)`);
+      }
+    }
+  }
+  
+  return { ok: missing.length === 0, missing };
+}
+
 // --- Exports: browser (globalThis) AND Node (module.exports, guarded) --------
 
 const RBS_NATIVE = {
@@ -748,6 +793,7 @@ const RBS_NATIVE = {
   rangeHasConflict,
   keyToAction,
   shouldRevealNative,
+  selfCheck,
 };
 
 // Expose each on globalThis for the content script / panel.js.

@@ -337,3 +337,53 @@ test('shouldRevealNative triggers after 3 consecutive failures', () => {
   assert.equal(native.shouldRevealNative({ consecutiveFailures: 3 }), true);
   assert.equal(native.shouldRevealNative({ consecutiveFailures: 4 }), true);
 });
+
+// 17. selfCheck validates complete refs object
+test('selfCheck on a complete stub refs object → {ok:true}', () => {
+  const stub = {
+    host: {},
+    topbar: {},
+    buildingSelect: { addEventListener: () => {} },
+    typeSelect: { addEventListener: () => {} },
+    capInput: { addEventListener: () => {} },
+    searchInput: { addEventListener: () => {} },
+    dateChips: {},
+    startSelect: { addEventListener: () => {} },
+    endSelect: { addEventListener: () => {} },
+    sortSelect: { addEventListener: () => {} },
+    refreshBtn: { addEventListener: () => {} },
+    nativeBtn: { addEventListener: () => {} },
+    boardHeader: {},
+    boardRows: {},
+    statusBar: {}
+  };
+  
+  const result = native.selfCheck(stub);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.missing, []);
+});
+
+// 18. selfCheck detects missing elements
+test('selfCheck on one missing typeSelect → {ok:false, missing:["typeSelect"]}', () => {
+  const stub = {
+    host: {},
+    topbar: {},
+    buildingSelect: { addEventListener: () => {} },
+    // typeSelect is missing
+    capInput: { addEventListener: () => {} },
+    searchInput: { addEventListener: () => {} },
+    dateChips: {},
+    startSelect: { addEventListener: () => {} },
+    endSelect: { addEventListener: () => {} },
+    sortSelect: { addEventListener: () => {} },
+    refreshBtn: { addEventListener: () => {} },
+    nativeBtn: { addEventListener: () => {} },
+    boardHeader: {},
+    boardRows: {},
+    statusBar: {}
+  };
+  
+  const result = native.selfCheck(stub);
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.missing, ['typeSelect']);
+});

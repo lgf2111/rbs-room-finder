@@ -35,6 +35,15 @@
 
   // Global UI references
   let ui = null;
+  
+  // Safer UI access with guard
+  function getUI() {
+    if (!ui) {
+      renderFatal('UI not initialized');
+      throw new Error('UI not initialized');
+    }
+    return ui;
+  }
 
   // Guard: if native.js failed to load, do nothing rather than throw on page.
   if (typeof buildSearchPayload !== 'function' || typeof createSlotQueue !== 'function') {
@@ -97,6 +106,91 @@
     return node ? node.value || '' : '';
   }
 
+  // Read building name from the selected building option
+  function readBuildingName() {
+    const buildingSelect = document.getElementById(RBS_CONTROL_IDS.building);
+    if (!buildingSelect) return '';
+    
+    const selectedOption = buildingSelect.options[buildingSelect.selectedIndex];
+    if (!selectedOption) return '';
+    
+    const text = selectedOption.textContent.trim();
+    if (!text || /^-+$/.test(text) || /please select/i.test(text)) {
+      return '';
+    }
+    
+    // Extract building code (e.g., "E2" from "E2 - Engineering Block 2")
+    const match = text.match(/^([A-Z0-9]+)/);
+    return match ? match[1] : text.split(' ')[0];
+  }
+
+  // Populate building select from the live cascade
+  async function populateBuildingSelect(buildingSelect) {
+    const nativeBuildingSelect = document.getElementById(RBS_CONTROL_IDS.building);
+    if (!nativeBuildingSelect) {
+      buildingSelect.disabled = true;
+      buildingSelect.innerHTML = '';
+      buildingSelect.appendChild(el('option', { value: '', text: 'Building…' }));
+      return;
+    }
+    
+    // Read current options
+    const options = Array.from(nativeBuildingSelect.options)
+      .map(opt => ({ value: opt.value, text: opt.textContent.trim() }))
+      .filter(opt => opt.text && !/^-+$/.test(opt.text) && !/please select/i.test(opt.text));
+    
+    if (options.length >= 2) {
+      // We have real building options
+      buildingSelect.innerHTML = '';
+      buildingSelect.appendChild(el('option', { value: '', text: 'All buildings' }));
+      options.forEach(opt => {
+        buildingSelect.appendChild(el('option', { 
+          value: opt.value, 
+          text: opt.text 
+        }));
+      });
+      buildingSelect.disabled = false;
+    } else {
+      // Building select is empty - need to trigger cascade
+      buildingSelect.disabled = true;
+      buildingSelect.innerHTML = '';
+      buildingSelect.appendChild(el('option', { value: '', text: 'Building…' }));
+      
+      // Try to trigger campus change to populate building
+      const campusSelect = document.getElementById(RBS_CONTROL_IDS.campus);
+      if (campusSelect && campusSelect.options.length > 1) {
+        // Select first non-placeholder campus option
+        const realOptions = Array.from(campusSelect.options)
+          .filter(opt => opt.text.trim() && !/^-+$/.test(opt.text.trim()) && !/please select/i.test(opt.text.trim()));
+        
+        if (realOptions.length > 0 && campusSelect.value !== realOptions[0].value) {
+          campusSelect.value = realOptions[0].value;
+          campusSelect.dispatchEvent(new Event('change', { bubbles: true }));
+          
+          // Wait for cascade to populate building
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          
+          // Re-read building options
+          const newOptions = Array.from(nativeBuildingSelect.options)
+            .map(opt => ({ value: opt.value, text: opt.textContent.trim() }))
+            .filter(opt => opt.text && !/^-+$/.test(opt.text) && !/please select/i.test(opt.text));
+          
+          if (newOptions.length >= 2) {
+            buildingSelect.innerHTML = '';
+            buildingSelect.appendChild(el('option', { value: '', text: 'All buildings' }));
+            newOptions.forEach(opt => {
+              buildingSelect.appendChild(el('option', { 
+                value: opt.value, 
+                text: opt.text 
+              }));
+            });
+            buildingSelect.disabled = false;
+          }
+        }
+      }
+    }
+  }
+
   // Which required native ids are missing? Gate the board on ALL of these.
   function missingControlIds() {
     const required = [
@@ -109,6 +203,32 @@
       RBS_CONTROL_IDS.campus,
     ];
     return required.filter((id) => !document.getElementById(id));
+  }
+
+  // ---- fatal error rendering -----------------------------------------------
+
+  function renderFatal(message) {
+    try {
+      const existing = document.getElementById('rbs-room-finder-host');
+      if (existing) existing.remove();
+      
+      const hostEl = el('div', { id: 'rbs-room-finder-host' });
+      document.body.appendChild(hostEl);
+      const shadow = hostEl.attachShadow({ mode: 'open' });
+      shadow.appendChild(el('style', { text: PANEL_CSS }));
+      
+      const host = el('div', { class: 'rbs-fullpage' });
+      shadow.appendChild(host);
+      
+      const errorDiv = el('div', { 
+        style: 'display: flex; align-items: center; justify-content: center; height: 100%; color: #ff6b6b; font-size: 14px; padding: 20px; text-align: center;'
+      }, message);
+      host.appendChild(errorDiv);
+      
+      console.error('RBS Room Finder fatal:', message);
+    } catch (e) {
+      console.error('RBS Room Finder fatal (rendering failed):', message, e);
+    }
   }
 
   // ---- main UI shell --------------------------------------------------------
@@ -181,20 +301,21 @@
     return chips;
   }
 
-  function buildTopBar(shellUI, roomTypes, windowOpts) {
+  function buildTopBar(shellUI, roomTypes, windowOpts, attachListeners = true) {
     const topbar = el('div', { class: 'rbs-topbar' });
     
     // Brand
+    const buildingName = readBuildingName() || 'RBS';
     const brand = el('div', { class: 'rbs-brand' }, [
       el('span', { class: 'rbs-brand-text', text: 'RBS Room Finder' }),
-      el('span', { class: 'rbs-brand-building', text: 'E2' }) // TODO: read from #building
+      el('span', { class: 'rbs-brand-building', text: buildingName })
     ]);
     topbar.appendChild(brand);
     
     // Building select
     const buildingSelect = el('select');
-    // TODO: populate from #building options
-    buildingSelect.appendChild(el('option', { value: '', text: 'All buildings' }));
+    buildingSelect.appendChild(el('option', { value: '', text: 'Building…' }));
+    // Will be populated asynchronously
     topbar.appendChild(el('div', { class: 'rbs-control-group' }, [buildingSelect]));
     
     // Room type select
@@ -257,16 +378,21 @@
       class: 'rbs-action-btn',
       text: 'Native UI'
     });
-    refreshBtn.addEventListener('click', onLoadBoard);
-    nativeBtn.addEventListener('click', () => {
-      if (document.documentElement.classList.contains('rbsx-native-hidden')) {
-        showNativeUI();
-        nativeBtn.textContent = 'Hide Native';
-      } else {
-        hideNativeUI();
-        nativeBtn.textContent = 'Show Native';
-      }
-    });
+    
+    // Only attach listeners if requested (safer for initialization)
+    if (attachListeners) {
+      refreshBtn.addEventListener('click', onLoadBoard);
+      nativeBtn.addEventListener('click', () => {
+        if (document.documentElement.classList.contains('rbsx-native-hidden')) {
+          showNativeUI();
+          nativeBtn.textContent = 'Hide Native';
+        } else {
+          hideNativeUI();
+          nativeBtn.textContent = 'Show Native';
+        }
+      });
+    }
+    
     actions.appendChild(refreshBtn);
     actions.appendChild(nativeBtn);
     topbar.appendChild(actions);
@@ -289,11 +415,39 @@
       nativeBtn,
     };
   }
+  
+  function attachEventListeners(uiRefs) {
+    if (!uiRefs) return;
+    
+    // Refresh button
+    uiRefs.refreshBtn.addEventListener('click', onLoadBoard);
+    
+    // Native UI toggle button
+    uiRefs.nativeBtn.addEventListener('click', () => {
+      if (document.documentElement.classList.contains('rbsx-native-hidden')) {
+        showNativeUI();
+        uiRefs.nativeBtn.textContent = 'Hide Native';
+      } else {
+        hideNativeUI();
+        uiRefs.nativeBtn.textContent = 'Show Native';
+      }
+    });
+    
+    // Date chips selection
+    uiRefs.dateChips.querySelectorAll('.rbs-date-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        uiRefs.dateChips.querySelectorAll('.rbs-date-chip').forEach(c => 
+          c.classList.remove('rbs-selected')
+        );
+        chip.classList.add('rbs-selected');
+      });
+    });
+  }
 
   // ---- board ----------------------------------------------------------------
 
   function buildHourAxis(axis) {
-    const header = ui.boardHeader;
+    const header = getUI().boardHeader;
     header.innerHTML = '';
     header.style.gridTemplateColumns = `180px repeat(${axis.length}, 1fr)`;
     
@@ -341,18 +495,19 @@
   }
 
   function renderBoardSkeleton(rooms) {
-    ui.boardRows.innerHTML = '';
+    const currentUI = getUI();
+    currentUI.boardRows.innerHTML = '';
     
     // Build hour axis based on current window
-    const start = ui.startSelect.value || DEFAULT_WINDOW.start;
-    const end = ui.endSelect.value || DEFAULT_WINDOW.end;
+    const start = currentUI.startSelect.value || DEFAULT_WINDOW.start;
+    const end = currentUI.endSelect.value || DEFAULT_WINDOW.end;
     board.axis = buildSlotAxis(start, end);
     buildHourAxis(board.axis);
     
     // Build room rows
     for (const room of rooms) {
       const row = buildRoomRow(room);
-      ui.boardRows.appendChild(row);
+      currentUI.boardRows.appendChild(row);
       board.blocks.set(room.id, {
         rowEl: row,
         cellsEl: row.querySelector('.rbs-slot-cells'),
@@ -511,7 +666,7 @@
           }
         }
       },
-      { root: ui.boardScroll, threshold: 0.1 }
+      { root: getUI().boardScroll, threshold: 0.1 }
     );
     for (const entry of board.blocks.values()) {
       board.observer.observe(entry.rowEl);
@@ -637,7 +792,7 @@
   function updateDrawer(room, range) {
     if (!drawer) {
       drawer = buildDrawer();
-      ui.main.appendChild(drawer.drawerEl);
+      getUI().main.appendChild(drawer.drawerEl);
     }
     
     const window = rangeToWindow(range.startIdx, range.endIdx);
@@ -736,7 +891,7 @@
 
   // ---- status bar ----------------------------------------------------------
 
-  function buildStatusBar() {
+  function buildStatusBar(hostElement) {
     const statusbar = el('div', { class: 'rbs-statusbar' });
     const stats = el('div', { class: 'rbs-stats' });
     const errorIndicator = el('div', { class: 'rbs-error-indicator' });
@@ -748,7 +903,10 @@
     statusbar.appendChild(stats);
     statusbar.appendChild(errorIndicator);
     
-    ui.host.appendChild(statusbar);
+    if (hostElement) {
+      hostElement.appendChild(statusbar);
+    }
+    
     return { statusbar, stats, errorIndicator };
   }
 
@@ -771,10 +929,21 @@
   ];
 
   function hideNativeUI() {
-    const style = el('style', { id: 'rbs-native-hide' });
-    style.textContent = NATIVE_HIDE_SELECTORS.map(sel => `${sel} { display: none !important; }`).join('\n');
-    document.head.appendChild(style);
-    document.documentElement.classList.add('rbsx-native-hidden');
+    try {
+      // Add class to document element first
+      document.documentElement.classList.add('rbsx-native-hidden');
+      
+      // Inject stylesheet to hide native UI elements
+      const styleId = 'rbs-native-hide';
+      let style = document.getElementById(styleId);
+      if (!style) {
+        style = el('style', { id: styleId });
+        style.textContent = NATIVE_HIDE_SELECTORS.map(sel => `${sel} { display: none !important; }`).join('\n');
+        document.head.appendChild(style);
+      }
+    } catch (err) {
+      console.warn('Failed to hide native UI:', err);
+    }
   }
 
   function showNativeUI() {
@@ -793,7 +962,7 @@
     switch (event.key) {
       case '/':
         event.preventDefault();
-        ui.searchInput?.focus();
+        getUI().searchInput?.focus();
         return 'focus-search';
       case 'j':
       case 'ArrowDown':
@@ -858,36 +1027,45 @@
 
   function applyForm(form, roomTypes, windowOpts) {
     if (!form) return;
+    const currentUI = getUI();
+    
     if (form.roomType != null &&
         (form.roomType === '' || roomTypes.includes(form.roomType))) {
-      ui.typeSelect.value = form.roomType;
+      currentUI.typeSelect.value = form.roomType;
     }
     if (form.date) {
       // Select date chip
-      const chip = ui.dateChips.querySelector(`[data-date="${form.date}"]`);
+      const chip = currentUI.dateChips.querySelector(`[data-date="${form.date}"]`);
       if (chip) {
-        ui.dateChips.querySelectorAll('.rbs-date-chip').forEach(c => c.classList.remove('rbs-selected'));
+        currentUI.dateChips.querySelectorAll('.rbs-date-chip').forEach(c => c.classList.remove('rbs-selected'));
         chip.classList.add('rbs-selected');
       }
     }
     if (form.window) {
-      if (form.window.start && windowOpts.from.includes(form.window.start)) ui.startSelect.value = form.window.start;
-      if (form.window.end && windowOpts.to.includes(form.window.end)) ui.endSelect.value = form.window.end;
+      if (form.window.start && windowOpts.from.includes(form.window.start)) currentUI.startSelect.value = form.window.start;
+      if (form.window.end && windowOpts.to.includes(form.window.end)) currentUI.endSelect.value = form.window.end;
     }
-    if (form.minCapacity != null) ui.capInput.value = String(form.minCapacity);
-    if (form.sort) ui.sortSelect.value = form.sort;
+    if (form.minCapacity != null) currentUI.capInput.value = String(form.minCapacity);
+    if (form.sort) currentUI.sortSelect.value = form.sort;
   }
 
   // ---- main Load board flow ------------------------------------------------
 
   async function onLoadBoard() {
+    // Guard against null ui
+    if (!ui) {
+      renderFatal('Panel not initialized');
+      return;
+    }
+    
     // Read form from UI
+    const currentUI = getUI();
     const form = {
-      roomType: ui.typeSelect.value,
-      date: ui.dateChips.querySelector('.rbs-date-chip.rbs-selected')?.dataset.date || formatDate(new Date()),
-      window: { start: ui.startSelect.value, end: ui.endSelect.value },
-      minCapacity: Number(ui.capInput.value) || 0,
-      sort: ui.sortSelect.value,
+      roomType: currentUI.typeSelect.value,
+      date: currentUI.dateChips.querySelector('.rbs-date-chip.rbs-selected')?.dataset.date || formatDate(new Date()),
+      window: { start: currentUI.startSelect.value, end: currentUI.endSelect.value },
+      minCapacity: Number(currentUI.capInput.value) || 0,
+      sort: currentUI.sortSelect.value,
     };
 
     // Validate the window.
@@ -916,7 +1094,28 @@
     }
 
     const roomsFromSearch = rooms.length;
-    const filtered = rooms.filter((r) => r.capacity >= form.minCapacity);
+    
+    // Filter equipment out of "All rooms"
+    const roomTypesList = readRoomTypes(); // Read fresh each time
+    const filtered = rooms.filter((r) => {
+      // Capacity filter
+      if (r.capacity < form.minCapacity) return false;
+      
+      // When room type is "All rooms", filter out equipment
+      if (form.roomType === '') {
+        // Equipment has capacity 0 AND type is not a facility type
+        if (r.capacity === 0 && r.type) {
+          // Check if this is a facility type (from #resourceType options)
+          const isFacilityType = roomTypesList.includes(r.type);
+          if (!isFacilityType) {
+            return false; // Filter out equipment
+          }
+        }
+      }
+      
+      return true;
+    });
+    
     const ordered = sortRooms(filtered, form.sort);
     
     if (ordered.length === 0) {
@@ -973,42 +1172,75 @@
   // ---- init -----------------------------------------------------------------
 
   async function initSearchPage() {
-    const missing = missingControlIds();
-    const hostEl = el('div', { id: 'rbs-room-finder-host' });
-    document.body.appendChild(hostEl);
-    const shadow = hostEl.attachShadow({ mode: 'open' });
+    // Single-init guard
+    if (window.__rbsPanelInitialized) return;
+    window.__rbsPanelInitialized = true;
     
-    const shellUI = buildFullPageShell(shadow, missing);
-    if (!shellUI) return; // gate failed
-    
-    // Build top bar (Pass 2)
-    const roomTypes = readRoomTypes();
-    const windowOpts = readWindowOptions();
-    const topBar = buildTopBar(shellUI, roomTypes, windowOpts);
-    
-    // Build status bar (Pass 5)
-    const statusBar = buildStatusBar();
-    
-    // Combine UI references and set global ui
-    ui = { ...shellUI, ...topBar, ...statusBar };
-    
-    // Hide native UI by default
-    hideNativeUI();
-    
-    // Add keyboard listeners
-    document.addEventListener('keydown', (e) => {
-      const action = keyToAction(e);
-      if (action) {
-        e.preventDefault();
-        e.stopPropagation();
+    let localUI = null;
+    try {
+      const missing = missingControlIds();
+      const hostEl = el('div', { id: 'rbs-room-finder-host' });
+      document.body.appendChild(hostEl);
+      const shadow = hostEl.attachShadow({ mode: 'open' });
+      
+      const shellUI = buildFullPageShell(shadow, missing);
+      if (!shellUI) {
+        renderFatal('Failed to build full page shell');
+        return;
       }
-    });
-    
-    // Restore last search (but don't auto-run)
-    const last = await loadLast();
-    if (last) applyForm(last, roomTypes, windowOpts);
-    
-    return ui;
+      
+      // Hide native UI at boot, reliably (must run before any await)
+      hideNativeUI();
+      
+      // Build top bar (Pass 2) - but DON'T attach listeners yet
+      const roomTypes = readRoomTypes();
+      const windowOpts = readWindowOptions();
+      const topBar = buildTopBar(shellUI, roomTypes, windowOpts, false); // false = no listeners
+      
+      // Build status bar (Pass 5)
+      const statusBar = buildStatusBar(shellUI.host);
+      
+      // Combine UI references into local object first
+      localUI = { ...shellUI, ...topBar, ...statusBar };
+      
+      // Run self-check before assigning to global ui
+      const check = selfCheck(localUI);
+      if (!check.ok) {
+        renderFatal('UI self-check failed: ' + check.missing.join(', '));
+        return;
+      }
+      
+      // Now attach event listeners safely
+      attachEventListeners(localUI);
+      
+      // Only now assign to global ui
+      ui = localUI;
+      
+      // Populate building select asynchronously
+      populateBuildingSelect(ui.buildingSelect).catch(err => {
+        console.warn('Failed to populate building select:', err);
+      });
+      
+      // Add keyboard listeners
+      document.addEventListener('keydown', (e) => {
+        const action = keyToAction(e);
+        if (action) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      });
+      
+      // Restore last search (but don't auto-run)
+      const last = await loadLast();
+      if (last) applyForm(last, roomTypes, windowOpts);
+      
+      return ui;
+    } catch (error) {
+      renderFatal(`Init failed: ${error.message}`);
+      // Still hide native UI even if init fails partially
+      try { hideNativeUI(); } catch (e) {}
+      return null;
+    }
   }
 
   function initLauncher() {
