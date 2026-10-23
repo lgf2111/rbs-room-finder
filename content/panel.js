@@ -305,6 +305,7 @@
         el('div', { class: 'rbs-date-weekday', text: weekdays[d.getDay()] }),
         el('div', { class: 'rbs-date-label', text: formatDate(d) })
       ]);
+      if (i === 0) chip.classList.add('rbs-selected');
       chips.push(chip);
     }
     return chips;
@@ -342,7 +343,7 @@
       min: '0',
       placeholder: 'Min cap',
       'aria-label': 'Minimum capacity',
-      value: '0'
+      value: ''
     });
     topbar.appendChild(el('div', { class: 'rbs-control-group' }, [capInput]));
     

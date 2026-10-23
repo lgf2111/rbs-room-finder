@@ -462,7 +462,7 @@ test('equipment filter removes capacity-0 non-facility types when roomType is em
 test('axisGridTemplate returns correct grid template for axis', () => {
   const axis = native.buildSlotAxis('07:00', '22:30');
   const template = native.axisGridTemplate(axis);
-  assert.equal(template, '180px repeat(30, 1fr)');
+  assert.equal(template, '180px repeat(30, minmax(0, 1fr))');
 });
 
 // 23. buildAxisHeaderCells
@@ -482,5 +482,5 @@ test('rowGridTemplate should be same as axisGridTemplate', () => {
   const headerTemplate = native.axisGridTemplate(axis);
   // In panel.js, buildRoomRow uses axisGridTemplate(board.axis)
   // So row template should match header template
-  assert.equal(headerTemplate, '180px repeat(30, 1fr)');
+  assert.equal(headerTemplate, '180px repeat(30, minmax(0, 1fr))');
 });

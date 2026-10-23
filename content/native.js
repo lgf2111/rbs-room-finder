@@ -765,7 +765,7 @@ function filterRooms(rooms, roomType, minCapacity, facilityTypes) {
  */
 function axisGridTemplate(axis) {
   if (!Array.isArray(axis)) return '180px';
-  return `180px repeat(${axis.length}, 1fr)`;
+  return `180px repeat(${axis.length}, minmax(0, 1fr))`;
 }
 
 /**
