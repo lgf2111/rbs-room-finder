@@ -591,7 +591,10 @@
   }
 
   function el(tag, props, children) {
-    const node = document.createElement(tag);
+    // Shoelace's sl-select only understands <sl-option> children; a plain <option>
+    // is ignored, which left every select empty after the Shoelace migration.
+    const realTag = tag === 'option' && hasShoelace() ? 'sl-option' : tag;
+    const node = document.createElement(realTag);
     if (props) {
       for (const [k, v] of Object.entries(props)) {
         if (k === 'class') node.className = v;
@@ -1462,7 +1465,15 @@
     try {
       return JSON.parse(text);
     } catch (e) {
-      throw ApiError('the RBS API returned an error (unparseable JSON)', resp.status);
+      // A 200 with an HTML body means RBS answered with a page, not data — the
+      // usual cause is an expired SIT session silently redirecting to /Home/ErrorPage.
+      const looksLikeHtml = /^\s*<(!doctype|html)/i.test(text);
+      throw ApiError(
+        looksLikeHtml
+          ? 'RBS returned a web page instead of data — your SIT session has probably expired. Reload the page and sign in again.'
+          : 'the RBS API returned an error (unparseable JSON)',
+        resp.status
+      );
     }
   }
 
