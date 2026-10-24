@@ -323,6 +323,11 @@
     z-index: 10;
   }
   
+  .rbs-hour-last {
+    font-size: 10px;
+    color: var(--rbs-muted);
+  }
+  
   .rbs-room-label {
     padding: 0 12px;
     font-family: var(--rbs-font-mono);
@@ -1436,23 +1441,30 @@
 
   // ---- board ----------------------------------------------------------------
 
+
+  // Grid template for the board: a fixed room column plus one track per axis slot.
+  function roomColumnTemplate(axis) {
+    const n = Array.isArray(axis) ? axis.length : 0;
+    return `200px repeat(${n}, minmax(0, 1fr))`;
+  }
+
   function buildHourAxis(axis) {
     const header = getUI().boardHeader;
     header.innerHTML = '';
-    header.style.gridTemplateColumns = axisGridTemplate(axis);
-    
-    // Room label column
+    // The board grid is `roomColumn` + one track per axis slot; the room column is a
+    // separate element outside that grid, so the header must lead with its own
+    // "Room" cell and then place one cell per slot: 1 + axis.length cells.
+    header.style.gridTemplateColumns = roomColumnTemplate(axis);
     header.appendChild(el('div', { class: 'rbs-room-label', text: 'Room' }));
-    
-    // Hour labels
     const cellInfo = buildAxisHeaderCells(axis);
-    for (const { isHour, label } of cellInfo) {
-      const cell = el('div', {
-        class: 'rbs-room-label' + (isHour ? ' rbs-hour' : ''),
-        text: isHour ? label : '\u00b7',
+    for (let i = 0; i < cellInfo.length; i++) {
+      const { isHour, label } = cellInfo[i];
+      const isLast = i === cellInfo.length - 1;
+      header.appendChild(el('div', {
+        class: 'rbs-room-label' + (isHour ? ' rbs-hour' : '') + (isLast ? ' rbs-hour-last' : ''),
+        text: isHour || isLast ? label : '\u00b7',
         title: label
-      });
-      header.appendChild(cell);
+      }));
     }
   }
 
@@ -1463,7 +1475,7 @@
     });
     
     // Set grid columns to match header
-    row.style.gridTemplateColumns = axisGridTemplate(board.axis);
+    row.style.gridTemplateColumns = roomColumnTemplate(board.axis);
     
     // Room info column
     const roomInfo = el('div', { class: 'rbs-room-info' }, [
