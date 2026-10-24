@@ -35,15 +35,17 @@ function statusSentence(s: {
   freeSlots: number;
   done: boolean;
   error?: string;
+  hidden?: number;
 }): string {
   if (s.error) return s.error;
-  if (s.total === 0) return s.done ? 'No rooms' : 'Loading rooms…';
+  const hiddenNote = s.hidden && s.hidden > 0 ? ` · ${s.hidden} hidden (not bookable)` : '';
+  if (s.total === 0) return (s.done ? 'No rooms' : 'Loading rooms…') + hiddenNote;
   const parts: string[] = [];
   parts.push(`${s.total} ${s.total === 1 ? 'room' : 'rooms'}`);
   parts.push(`${s.freeSlots} free ${s.freeSlots === 1 ? 'slot' : 'slots'}`);
   if (!s.done) parts.push(`loading ${s.loaded}/${s.total}`);
   else if (s.failed > 0) parts.push(`${s.failed} failed`);
-  return parts.join(' · ');
+  return parts.join(' · ') + hiddenNote;
 }
 
 const INITIAL_FORM: BoardForm = {
@@ -210,6 +212,7 @@ export function SearchView({ onRevealNative }: { onRevealNative: () => void }) {
         freeSlots,
         done: status.done,
         error: status.error,
+        hidden: status.hidden,
       })}
     </span>
   );

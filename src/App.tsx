@@ -24,6 +24,8 @@
 import * as React from 'react';
 
 import { SearchView } from '@/components/SearchView';
+import { StaticPage } from '@/components/StaticPage';
+import { SupportBooking } from '@/components/SupportBooking';
 import { UnmappedScreen } from '@/components/UnmappedScreen';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -183,6 +185,14 @@ export function App() {
       <div className="min-h-0 flex-1 overflow-hidden" data-testid="nova-body">
         {route.kind === 'search' ? (
           <SearchView onRevealNative={revealNativeAndHideApp} />
+        ) : route.kind === 'support-booking' ? (
+          <SupportBooking
+            route={route}
+            navigate={navigate}
+            onRevealNative={revealNativeAndHideApp}
+          />
+        ) : route.kind === 'user-guide' || route.kind === 'faq' || route.kind === 'support' ? (
+          <StaticPage route={route} onRevealNative={revealNativeAndHideApp} />
         ) : (
           <UnmappedScreen route={route} onRevealNative={revealNativeAndHideApp} />
         )}

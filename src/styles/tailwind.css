@@ -406,3 +406,48 @@
 @media (prefers-reduced-motion: reduce) {
   .nova-thumb-preview { animation: none; }
 }
+
+/*
+ * Re-rendered static pages (User Guide / FAQ / Support) — nova typography on
+ * the dark surface. The content is sanitised server markup rendered as React
+ * elements (see src/components/StaticPage.tsx), so these rules only need to
+ * style plain prose: headings, paragraphs, lists, and simple tables.
+ */
+.nova-prose {
+  color: var(--rbs-text, #e6e8ea);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.nova-prose h1 { font-size: 22px; font-weight: 700; margin: 0 0 12px; letter-spacing: -0.2px; }
+.nova-prose h2 { font-size: 18px; font-weight: 600; margin: 24px 0 8px; }
+.nova-prose h3 { font-size: 15px; font-weight: 600; margin: 18px 0 4px; }
+.nova-prose p { margin: 10px 0; color: var(--rbs-muted, #9aa1a9); }
+.nova-prose ul,
+.nova-prose ol { margin: 10px 0; padding-left: 24px; color: var(--rbs-muted, #9aa1a9); }
+.nova-prose li { margin: 6px 0; }
+.nova-prose code {
+  font-family: var(--nova-mono, ui-monospace, monospace);
+  background: var(--rbs-surface2, #0f1115);
+  border: 1px solid var(--rbs-border-hex);
+  border-radius: 3px;
+  padding: 0.5px 5px;
+}
+.nova-prose .faq-item { margin: 14px 0; }
+
+/* Support Booking reservations table. */
+.nova-sb-table { border-collapse: collapse; }
+.nova-sb-table th,
+.nova-sb-table td {
+  border: 1px solid var(--rbs-border-hex);
+  padding: 7px 10px;
+  text-align: left;
+  vertical-align: middle;
+}
+.nova-sb-table th {
+  background: var(--rbs-surface2, #0f1115);
+  color: var(--rbs-text, #e6e8ea);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

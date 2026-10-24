@@ -240,10 +240,15 @@
           Confirm button stays disabled with a visible note; the only booking path today is the
           native handoff (select the native card, scroll the action bar into view, let the user
           confirm). Nova never clicks a native submit/confirm.</li>
-        <li><b>The non-booking pages</b> — Dashboard, Support Booking, User Guide, FAQ, Support —
-          all render the honest "not mapped" screen. No invented dashboards, bookings, or help
-          text.</li>
+        <li><b>The Dashboard</b> (<code>/DHB001/DHB001Page</code>) still renders the honest
+          "not mapped" screen, pending recon of its data source.</li>
       </ul>
+      <p class="muted"><b>Owner decisions now in effect:</b> User Guide / FAQ / Support are
+        <b>re-rendered inside Nova</b> (sanitised same-origin fetch, no page scripts executed);
+        <b>Support Booking is interactive</b> (reservations table parsed into a Nova table with
+        per-row handoff actions and a New-booking action); and <b>non-bookable / non-permitted
+        rooms are filtered out everywhere</b> (owner: "if it cannot be booked it should not even be
+        showing up"), with a quiet "N hidden (not bookable)" note on the status line.</p>
       <p class="muted">Everything else on the search board (skeleton rows, single-flight slot fill,
         generation counter, per-room cache, hour-block dividers on the <code>:30</code> boundary)
         is live and measured.</p>
@@ -297,36 +302,42 @@
       <div class="kv"><div class="k">Goal</div>
         Dashboard (<code>/DHB001/DHB001Page</code>), Support Booking (<code>/SPT001/SPT001Page</code>),
         User Guide (<code>/Home/UserGuidePage</code>), FAQ (<code>/Home/FAQPage</code>) and Support
-        (<code>/Home/SupportPage</code>) all live under one dark Nova shell with real nav — honest
-        "not mapped" states until each page earns real content.</div>
+        (<code>/Home/SupportPage</code>) all live under one dark Nova shell with real nav — each
+        page re-rendered in Nova where decided, honest "not mapped" only where no data source is
+        known yet (Dashboard).</div>
       <div class="kv"><div class="k">In scope</div>
         <ul>
           <li>Nav with the six real routes and labels; routing already shipped.</li>
-          <li>Per-page recon of the data source, documented:
+          <li><b>Decided + shipped:</b>
             <ul>
-              <li><b>Dashboard</b> — likely a JSON summary endpoint behind <code>/DHB001</code>;
-                discover via the Network tab on load (XHR/fetch list) and the page's inline table markup.</li>
-              <li><b>Support Booking</b> — likely a second WebForms search like <code>/SRB001</code>;
-                discover its POST + field names by capturing one native search.</li>
-              <li><b>User Guide / FAQ / Support</b> — static native HTML; discover by reading the
-                server markup and deciding what, if anything, to re-render vs. reveal native.</li>
+              <li><b>User Guide / FAQ / Support</b> — <b>re-rendered in Nova</b> by sanitised
+                same-origin fetch + DOMParser (no page scripts run, no raw HTML inserted), with
+                loading / error states and a reveal-native fallback.</li>
+              <li><b>Support Booking</b> — <b>interactive</b>: the <code>#bookingList</code> table is
+                parsed into a Nova table (room, date, time, status); per-row Cancel / Raise support
+                request hand off to the native page (cancel endpoint not mapped — never a fake
+                cancellation); a primary New-booking routes to the board.</li>
             </ul>
           </li>
+          <li><b>Still to do — Dashboard</b> recon: likely a JSON summary endpoint behind
+            <code>/DHB001</code>; discover via the Network tab on load and the page's inline markup.</li>
         </ul>
       </div>
-      <div class="kv"><div class="k">Out of scope</div> Any invented content; interactive support
-        booking (that is a P1 decision → possibly P2); editing <code>content/native.js</code>.</div>
+      <div class="kv"><div class="k">Out of scope</div> Any invented content; a mapped cancel
+        endpoint for Support Booking (handoff-only until captured); editing
+        <code>content/native.js</code>.</div>
       <div class="kv"><div class="k">Acceptance gates</div>
         <ul class="gate">
           <li>nav renders 6 entries with the exact labels and real hrefs</li>
-          <li>each nav click pushes the real path; Search → board, others → honest unmapped screen</li>
-          <li>Back returns to the prior route; <code>/Home/ErrorPage</code> still not taken over</li>
-          <li>recon notes committed naming each page's likely endpoint/markup + discovery method</li>
+          <li>each nav click pushes the real path; Back returns; <code>/Home/ErrorPage</code> not taken over</li>
+          <li>FAQ / User Guide / Support render their content in Nova with zero executed page scripts</li>
+          <li>Support Booking renders the reservation rows with per-row handoff + New booking</li>
+          <li>non-bookable / non-permitted rooms never appear (row, cart, counts, photo scope)</li>
         </ul>
       </div>
-      <div class="kv"><div class="k">Dependencies / unknowns</div> A 15-minute recon session for Dashboard
-        and Support; the Support Booking interaction decision.</div>
-      <div class="kv"><div class="k">Top risk</div> Dashboard/Support turn out to be postback-driven
+      <div class="kv"><div class="k">Dependencies / unknowns</div> A 15-minute recon session for the
+        Dashboard; the Support Booking <b>cancel</b> endpoint (captured later, folds into P2).</div>
+      <div class="kv"><div class="k">Top risk</div> Dashboard turns out to be postback-driven
         WebForms (not JSON), forcing native passthrough instead of a Nova re-render.</div>
     </div>
   </details>
@@ -343,6 +354,8 @@
             tested layer style.</li>
           <li>Reserve/confirm with a verify step that reads the server's answer verbatim.</li>
           <li>Cancellable flow; the native handoff stays as the fallback path.</li>
+          <li>Map the Support Booking <b>cancel</b> endpoint so the interactive Support Booking row
+            actions become real (today they hand off to native).</li>
         </ul>
       </div>
       <div class="kv"><div class="k">Out of scope</div> Auto-confirming without the verify signal;
@@ -448,8 +461,8 @@
         tolerates a postback — if the page reloads, the fresh document re-harvests on mount; Nova
         drives the API by fetch, not by submitting the form.</td></tr>
       <tr><td>Stale unpacked builds (#1 false bug)</td><td><b>In place:</b> build stamp
-        (<code>window.__rbsBuild</code> + a visible "build &lt;sha&gt; · &lt;time&gt;" line) so a
-        screenshot identifies the loaded build.</td></tr>
+        (<code>window.__rbsBuild</code> = { id, builtAt } + a visible "build &lt;id&gt; · &lt;time&gt;"
+        line) so a screenshot identifies the loaded build; the id is the content hash of the inputs.</td></tr>
       <tr><td>Double-booking</td><td><b>Planned (P2):</b> verify step reading the server answer
         verbatim; refuse a second confirm of the same slot; never claim success without the signal.</td></tr>
       <tr><td>Credit burn</td><td><b>In place:</b> fewer/bigger phases, measured gates, ~206/1000 spent.
@@ -466,7 +479,8 @@
   <div class="card">
     <ol class="body">
       <li><b>Deterministic build</b> — <code>npm run build</code>; rebuilding the same checkout is
-        byte-identical (the stamp uses HEAD's commit date, not <code>now</code>).</li>
+        byte-identical. The stamp is a content <b>id</b> (sha256 over the sorted build inputs) plus
+        HEAD's committer date, so it never depends on wall-clock time or a moving HEAD sha.</li>
       <li><code>node --check content/nova.bundle.js</code> — the bundle parses.</li>
       <li><code>node --test tests/</code> — <b>36/36</b> on the frozen data layer.</li>
       <li><b>Harness assertions</b> — inject native.js → panel.js → nova.bundle.js on
@@ -483,19 +497,29 @@
 
 <section id="questions">
   <h2>8. Open questions</h2>
+  <div class="card">
+    <h3>Decided (this round)</h3>
+    <ul>
+      <li><b>Support Booking is interactive</b> — reservations table re-rendered in Nova with
+        per-row handoff actions and a New-booking action.</li>
+      <li><b>User Guide / FAQ / Support are re-rendered in Nova</b> (sanitised same-origin fetch),
+        not handed back to native.</li>
+      <li><b>Non-bookable / non-permitted rooms are filtered out</b> everywhere; there is no
+        further "out of scope rooms" question — the API flags (<code>IS_BOOKABLE</code>,
+        <code>IS_PERMITTED</code>) are the rule.</li>
+    </ul>
+  </div>
   <ol class="body">
-    <li>Is <b>Support Booking</b> read-only or interactive?</li>
     <li>Is booking a <b>single POST</b> or a <b>multi-step wizard</b> (so P2 can scope the flow)?</li>
     <li>Does the <b>Dashboard</b> expose a JSON endpoint, or is it server-rendered WebForms only?</li>
-    <li>Should <b>User Guide / FAQ / Support</b> be re-rendered in the Nova shell, or always revealed
-      as the native page?</li>
+    <li>What is the <b>Support Booking cancel endpoint</b> (needed to make the row actions real
+      instead of a native handoff)?</li>
     <li>What is the acceptable <b>first-board-paint</b> and <b>full-fill</b> time budget for P4?</li>
-    <li>Any rooms/buildings <b>out of scope</b> (restricted, staff-only) that Nova should hide?</li>
   </ol>
 </section>
 
 <footer>
-  Last updated 2026-10-24 — build cfd2fdd
+  Last updated 2026-10-24 — build 0d5fc1ad7e3c
 </footer>
 
 </main>

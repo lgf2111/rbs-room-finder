@@ -56,6 +56,11 @@ export interface BoardStatus {
    *  (HTML instead of JSON). The board shows a dedicated 'Session expired'
    *  recovery state rather than a generic error or a zero-room 'No rooms'. */
   sessionExpired?: boolean;
+  /** Rooms dropped because they cannot be booked (IS_BOOKABLE === false) or are
+   *  not permitted (IS_PERMITTED === false). Reported quietly on the status
+   *  line, never rendered as a row (owner rule: "if it cannot be booked it
+   *  should not even be showing up"). */
+  hidden?: number;
 }
 
 export interface BoardModel {
@@ -77,9 +82,17 @@ function formKey(f: BoardForm): string {
   return [f.building, f.roomType, f.minCapacity, f.search, f.date, f.window.start, f.window.end, f.sort].join('|');
 }
 
-/** Sort + text-filter rooms client-side (the search box is a substring match). */
+/** A room the owner can actually book: the API must say it is both bookable and
+ *  permitted. Everything else is hidden entirely (no row, no cart, no counts). */
+function isBookableRoom(r: Room): boolean {
+  return r.bookable !== false && r.permitted !== false;
+}
+
+/** Sort + text-filter rooms client-side (the search box is a substring match).
+ *  Non-bookable / non-permitted rooms are dropped BEFORE any other filter so
+ *  they never reach the board, the cart, the counts, or the photo scope. */
 function applyClientFilters(rooms: Room[], form: BoardForm): Room[] {
-  let out = rooms;
+  let out = rooms.filter(isBookableRoom);
   const needle = form.search.trim().toLowerCase();
   if (needle) {
     out = out.filter(
@@ -189,6 +202,9 @@ export function useBoard(form: BoardForm): BoardModel {
       if (cancelled) return;
 
       const filtered = applyClientFilters(roomList, form);
+      // Count rooms the API returned but that are not bookable/permitted, so the
+      // status line can report them quietly ("N rooms · M hidden (not bookable)").
+      const hidden = roomList.filter((r) => !isBookableRoom(r)).length;
 
       // Skeleton rows painted immediately from the room list.
       setRows(filtered.map((room) => ({ room, state: { kind: 'skeleton' } as RowState })));
@@ -200,6 +216,7 @@ export function useBoard(form: BoardForm): BoardModel {
         inFlight: 0,
         elapsedMs: 0,
         done: filtered.length === 0,
+        hidden,
       });
 
       if (filtered.length === 0) return;
