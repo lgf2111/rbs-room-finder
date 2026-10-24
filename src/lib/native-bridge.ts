@@ -31,13 +31,57 @@ interface DefaultWindow {
   end: string;
 }
 
-// Globals published by content/native.js (see its export block).
+/**
+ * A form the Nova skin hands to the panel engine via the bridge. Every field is
+ * optional: the panel only applies the ones that are present.
+ */
+export interface BridgeForm {
+  building?: string;
+  roomType?: string;
+  minCapacity?: number;
+  search?: string;
+  date?: string;
+  window?: { start: string; end: string };
+  sort?: string;
+}
+
+/** Live native page state the bridge reports back to the skin. */
+export interface BridgeState {
+  roomTypes: NativeOption[];
+  windowOptions: WindowOptions;
+  buildings: NativeOption[];
+  building: string;
+  buildingName: string;
+  date: string;
+}
+
+/**
+ * The ONE narrow seam content/panel.js exposes for Nova. It is created inside
+ * panel.js's IIFE before Nova mounts, so it is present whenever the skin runs.
+ */
+export interface RbsBridge {
+  version: number;
+  readState(): BridgeState;
+  applyForm(form: BridgeForm): void;
+  requestReload(reason?: string): void;
+  subscribe(fn: (e: { reason: string; state: BridgeState }) => void): () => void;
+  eventName: string;
+}
+
+// Globals published by content/native.js (see its export block) and the bridge
+// published by content/panel.js.
 declare global {
   interface Window {
     RBS_CONTROL_IDS?: RbsControlIds;
     DEFAULT_WINDOW?: DefaultWindow;
     buildDateChips?: (start: Date, count: number) => DateChip[];
+    __rbsBridge?: RbsBridge;
   }
+}
+
+/** The panel bridge if present (it is installed by content/panel.js on load). */
+export function getBridge(): RbsBridge | undefined {
+  return (globalThis as unknown as Window).__rbsBridge;
 }
 
 export interface DateChip {

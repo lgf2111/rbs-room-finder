@@ -13,10 +13,12 @@ import {
 import { cn } from '@/lib/utils';
 import {
   DEFAULT_WINDOW,
+  getBridge,
   readBuildings,
   readDateChips,
   readRoomTypes,
   readWindowOptions,
+  type BridgeForm,
   type DateChip,
   type NativeOption,
 } from '@/lib/native-bridge';
@@ -35,50 +37,133 @@ export interface TopBarState {
   sort: string;
 }
 
+type WindowOptions = { from: string[]; to: string[] };
+
+/** Shape of the live native page state the top bar renders from. */
+interface PageState {
+  buildings: NativeOption[];
+  roomTypes: NativeOption[];
+  windowOpts: WindowOptions;
+}
+
+/** Read the live page state, preferring the bridge and falling back to DOM. */
+function readPageState(): PageState {
+  const bridge = getBridge();
+  if (bridge) {
+    const s = bridge.readState();
+    return { buildings: s.buildings, roomTypes: s.roomTypes, windowOpts: s.windowOptions };
+  }
+  return { buildings: readBuildings(), roomTypes: readRoomTypes(), windowOpts: readWindowOptions() };
+}
+
 /**
- * Phase 1 shadcn top bar. Reads real page state through the content/native.js
- * helpers (room types, window options, date chips, buildings) and holds its
- * selections in local React state.
+ * Phase 2A shadcn top bar. Reads real page state through the panel bridge
+ * (content/panel.js `window.__rbsBridge`) and drives the panel's real search
+ * engine. Every control pushes its value into the bridge; the building select
+ * triggers the native change cascade so room types / window options repopulate,
+ * and the bar subscribes to native changes so it reflects live page state
+ * instead of a one-time mount snapshot.
  */
 export function TopBar() {
-  // Snapshot native page state once on mount. Phase 2 should make this reactive
-  // to native building changes.
-  const buildings = React.useMemo<NativeOption[]>(() => readBuildings(), []);
-  const roomTypes = React.useMemo<NativeOption[]>(() => readRoomTypes(), []);
-  const windowOpts = React.useMemo(() => readWindowOptions(), []);
   const dateChips = React.useMemo<DateChip[]>(() => readDateChips(14), []);
 
-  const [state, setState] = React.useState<TopBarState>(() => ({
-    // Prefer the first concrete building; the native "All buildings" ("") maps
-    // to the ALL_BUILDINGS sentinel (Radix forbids a "" item value).
-    building: buildings.find((b) => b.value)?.value ?? ALL_BUILDINGS,
-    roomType: roomTypes[0]?.value ?? ALL_ROOMS,
-    capacity: '0',
-    search: '',
-    dateIndex: dateChips.findIndex((c) => c.isToday) >= 0 ? dateChips.findIndex((c) => c.isToday) : 0,
-    windowStart: windowOpts.from.includes(DEFAULT_WINDOW.start) ? DEFAULT_WINDOW.start : windowOpts.from[0] ?? '',
-    windowEnd: windowOpts.to.includes(DEFAULT_WINDOW.end) ? DEFAULT_WINDOW.end : windowOpts.to[windowOpts.to.length - 1] ?? '',
-    sort: 'name',
-  }));
+  // Live native page state, refreshed whenever the native cascade moves.
+  const [page, setPage] = React.useState<PageState>(() => readPageState());
+  const { buildings, roomTypes, windowOpts } = page;
 
-  const patch = (p: Partial<TopBarState>) => setState((s) => ({ ...s, ...p }));
+  const [state, setState] = React.useState<TopBarState>(() => {
+    const init = readPageState();
+    return {
+      building: init.buildings.find((b) => b.value)?.value ?? ALL_BUILDINGS,
+      roomType: init.roomTypes[0]?.value ?? ALL_ROOMS,
+      capacity: '0',
+      search: '',
+      dateIndex: dateChips.findIndex((c) => c.isToday) >= 0 ? dateChips.findIndex((c) => c.isToday) : 0,
+      windowStart: init.windowOpts.from.includes(DEFAULT_WINDOW.start)
+        ? DEFAULT_WINDOW.start
+        : init.windowOpts.from[0] ?? '',
+      windowEnd: init.windowOpts.to.includes(DEFAULT_WINDOW.end)
+        ? DEFAULT_WINDOW.end
+        : init.windowOpts.to[init.windowOpts.to.length - 1] ?? '',
+      sort: 'name',
+    };
+  });
+
+  // Subscribe to native control changes: re-read the live options and reconcile
+  // the current selection against them (e.g. a building cascade repopulating
+  // room types / window options).
+  React.useEffect(() => {
+    const bridge = getBridge();
+    if (!bridge) return;
+    const unsub = bridge.subscribe(() => {
+      const next = readPageState();
+      setPage(next);
+      setState((s) => {
+        const typeStillThere = s.roomType === ALL_ROOMS || next.roomTypes.some((t) => (t.value || t.text) === s.roomType);
+        const startStillThere = next.windowOpts.from.includes(s.windowStart);
+        const endStillThere = next.windowOpts.to.includes(s.windowEnd);
+        return {
+          ...s,
+          roomType: typeStillThere ? s.roomType : next.roomTypes[0]?.value ?? ALL_ROOMS,
+          windowStart: startStillThere
+            ? s.windowStart
+            : next.windowOpts.from.includes(DEFAULT_WINDOW.start)
+              ? DEFAULT_WINDOW.start
+              : next.windowOpts.from[0] ?? '',
+          windowEnd: endStillThere
+            ? s.windowEnd
+            : next.windowOpts.to.includes(DEFAULT_WINDOW.end)
+              ? DEFAULT_WINDOW.end
+              : next.windowOpts.to[next.windowOpts.to.length - 1] ?? '',
+        };
+      });
+    });
+    return unsub;
+  }, []);
+
+  // Translate the local Nova state (plus any just-changed field) into the
+  // bridge form the panel engine understands.
+  const toForm = React.useCallback(
+    (s: TopBarState): BridgeForm => ({
+      building: s.building === ALL_BUILDINGS ? '' : s.building,
+      roomType: s.roomType === ALL_ROOMS ? '' : s.roomType,
+      minCapacity: Number(s.capacity) || 0,
+      search: s.search,
+      date: dateChips[s.dateIndex]?.label ?? '',
+      window: { start: s.windowStart, end: s.windowEnd },
+      sort: s.sort,
+    }),
+    [dateChips]
+  );
+
+  // Apply a patch, mirror it into the panel engine, and (optionally) run a
+  // reload. Building changes always push first so the native cascade fires.
+  const drive = React.useCallback(
+    (patch: Partial<TopBarState>, opts?: { reload?: boolean; reason?: string }) => {
+      setState((prev) => {
+        const nextState = { ...prev, ...patch };
+        const bridge = getBridge();
+        if (bridge) {
+          bridge.applyForm(toForm(nextState));
+          if (opts?.reload) bridge.requestReload(opts.reason ?? 'nova');
+        }
+        return nextState;
+      });
+    },
+    [toForm]
+  );
 
   function onSearch() {
-    // TODO(phase 2): wire this to content/panel.js `requestReload(form)` — it is
-    // private to the panel.js IIFE and not reachable from this bundle. Until a
-    // clean seam exists, this renders with local state only and performs no
-    // network search. Do NOT silently click #btnBookingMainSearch here.
-    const form = {
-      building: state.building === ALL_BUILDINGS ? '' : state.building,
-      roomType: state.roomType === ALL_ROOMS ? '' : state.roomType,
-      minCapacity: Number(state.capacity) || 0,
-      search: state.search,
-      date: dateChips[state.dateIndex]?.label ?? '',
-      window: { start: state.windowStart, end: state.windowEnd },
-      sort: state.sort,
-    };
+    const bridge = getBridge();
+    const form = toForm(state);
+    if (bridge) {
+      bridge.applyForm(form);
+      bridge.requestReload('nova-search');
+      return;
+    }
+    // No bridge (e.g. isolated preview): leave a trace but never click native.
     // eslint-disable-next-line no-console
-    console.info('[nova] search requested (phase 1, not wired):', form);
+    console.info('[nova] search requested but no panel bridge present:', form);
   }
 
   return (
@@ -89,7 +174,10 @@ export function TopBar() {
       <div className="flex flex-wrap items-center gap-2">
         {/* Building */}
         <Field label="Building">
-          <Select value={state.building} onValueChange={(v) => patch({ building: v })}>
+          <Select
+            value={state.building}
+            onValueChange={(v) => drive({ building: v === ALL_BUILDINGS ? ALL_BUILDINGS : v })}
+          >
             <SelectTrigger className="w-[150px]" data-testid="nova-building">
               <SelectValue placeholder="Building" />
             </SelectTrigger>
@@ -105,7 +193,7 @@ export function TopBar() {
 
         {/* Room type */}
         <Field label="Type">
-          <Select value={state.roomType} onValueChange={(v) => patch({ roomType: v })}>
+          <Select value={state.roomType} onValueChange={(v) => drive({ roomType: v })}>
             <SelectTrigger className="w-[160px]" data-testid="nova-roomtype">
               <SelectValue placeholder="All rooms" />
             </SelectTrigger>
@@ -126,7 +214,7 @@ export function TopBar() {
             type="number"
             min={0}
             value={state.capacity}
-            onChange={(e) => patch({ capacity: e.target.value })}
+            onChange={(e) => drive({ capacity: e.target.value })}
             className="w-[72px] nova-mono"
             data-testid="nova-capacity"
           />
@@ -138,7 +226,7 @@ export function TopBar() {
             type="text"
             placeholder="room name"
             value={state.search}
-            onChange={(e) => patch({ search: e.target.value })}
+            onChange={(e) => drive({ search: e.target.value })}
             className="w-[160px]"
             data-testid="nova-search"
           />
@@ -147,7 +235,7 @@ export function TopBar() {
         {/* Window start / end */}
         <Field label="Window">
           <div className="flex items-center gap-1">
-            <Select value={state.windowStart} onValueChange={(v) => patch({ windowStart: v })}>
+            <Select value={state.windowStart} onValueChange={(v) => drive({ windowStart: v })}>
               <SelectTrigger className="w-[88px] nova-mono" data-testid="nova-window-start">
                 <SelectValue placeholder="start" />
               </SelectTrigger>
@@ -160,7 +248,7 @@ export function TopBar() {
               </SelectContent>
             </Select>
             <span className="text-muted-foreground">–</span>
-            <Select value={state.windowEnd} onValueChange={(v) => patch({ windowEnd: v })}>
+            <Select value={state.windowEnd} onValueChange={(v) => drive({ windowEnd: v })}>
               <SelectTrigger className="w-[88px] nova-mono" data-testid="nova-window-end">
                 <SelectValue placeholder="end" />
               </SelectTrigger>
@@ -177,7 +265,7 @@ export function TopBar() {
 
         {/* Sort */}
         <Field label="Sort">
-          <Select value={state.sort} onValueChange={(v) => patch({ sort: v })}>
+          <Select value={state.sort} onValueChange={(v) => drive({ sort: v })}>
             <SelectTrigger className="w-[150px]" data-testid="nova-sort">
               <SelectValue />
             </SelectTrigger>
@@ -202,7 +290,7 @@ export function TopBar() {
           <button
             key={chip.label}
             type="button"
-            onClick={() => patch({ dateIndex: i })}
+            onClick={() => drive({ dateIndex: i })}
             className={cn(
               'flex h-control min-w-[44px] flex-col items-center justify-center rounded-md border px-2 text-[11px] leading-tight transition-colors',
               i === state.dateIndex
@@ -247,7 +335,7 @@ function StatusBar({ state, dateChips }: { state: TopBarState; dateChips: DateCh
         {state.windowStart}–{state.windowEnd}
       </span>
       <span>·</span>
-      <span>phase 1 preview — search not yet wired to the board</span>
+      <span>wired to the live search engine</span>
     </div>
   );
 }

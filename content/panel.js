@@ -2584,18 +2584,188 @@
     } catch (e) { /* non-fatal */ }
   }
 
+  // ---- nova bridge ----------------------------------------------------------
+  //
+  // ONE narrow, namespaced seam so the Nova (React/shadcn) skin can drive this
+  // panel's real search engine without reaching into its private closure or
+  // touching content/native.js. Everything here is additive: the old panel
+  // keeps working exactly as before whether or not Nova ever calls the bridge.
+  //
+  //   window.__rbsBridge.readState()          -> live native page state
+  //   window.__rbsBridge.applyForm(form)      -> push a form into the engine
+  //   window.__rbsBridge.requestReload(reason)-> run the engine (single-flight)
+  //   window.__rbsBridge.subscribe(fn)         -> notified on native changes
+  //
+  // The bridge is installed on every page load (below), BEFORE nova.bundle.js
+  // mounts, so the skin can rely on it existing the moment it renders.
+
+  const BRIDGE_EVENT = 'rbs:native-change';
+  const bridgeListeners = new Set();
+
+  // Resolve a wanted room-type (option TEXT like "Discussion Room", a value
+  // like "Discussion_Room", or '') against a panel select's options. Returns
+  // the option's own value so panel's fetchRooms (which maps _ -> space) is fed
+  // exactly what it expects. '' always maps to "All rooms".
+  function resolveTypeValue(control, wanted) {
+    if (!control) return '';
+    if (wanted === '' || wanted == null) return '';
+    const norm = (v) => String(v).toLowerCase().replace(/[^a-z0-9]/g, '');
+    const opts = readControlOptions(control);
+    const val = (o) => o.value || o.getAttribute('value') || '';
+    const byValue = opts.find((o) => val(o) === wanted);
+    if (byValue) return val(byValue);
+    const byText = opts.find((o) => (o.textContent || '').trim() === wanted);
+    if (byText) return val(byText);
+    const byNorm = opts.find((o) => norm(val(o)) === norm(wanted) || norm(o.textContent || '') === norm(wanted));
+    return byNorm ? val(byNorm) : '';
+  }
+
+  // Read the live native page state the skin needs to render reactively. Pure
+  // reads of the native DOM — never mutates anything.
+  function bridgeReadState() {
+    const buildingSel = document.getElementById(RBS_CONTROL_IDS.building);
+    const buildings = buildingSel
+      ? Array.from(buildingSel.options)
+          .map((o) => ({ value: o.value || '', text: (o.textContent || '').trim() }))
+          .filter((o) => o.text && !/^-+$/.test(o.text) && !/please select/i.test(o.text))
+      : [];
+    return {
+      roomTypes: readRoomTypes(),
+      windowOptions: readWindowOptions(),
+      buildings,
+      building: readIdValue(RBS_CONTROL_IDS.building),
+      buildingName: readBuildingName(),
+      date: (ui && ui.dateChips &&
+        ui.dateChips.querySelector('.rbs-date-chip.rbs-selected')?.dataset.date) || formatDate(new Date()),
+    };
+  }
+
+  // Notify every bridge subscriber (the skin) that native state moved.
+  function notifyBridge(reason) {
+    const state = bridgeReadState();
+    for (const fn of bridgeListeners) {
+      try { fn({ reason, state }); } catch (e) { /* subscriber error is non-fatal */ }
+    }
+    try {
+      window.dispatchEvent(new CustomEvent(BRIDGE_EVENT, { detail: { reason, state } }));
+    } catch (e) { /* CustomEvent unsupported: listeners still ran */ }
+  }
+
+  // Push a Nova form into the panel engine's own controls so onLoadBoard reads
+  // exactly these values. Building changes drive the native cascade so room
+  // types / window options repopulate just like the native select would.
+  function bridgeApplyForm(form) {
+    if (!ui || !form) return;
+
+    // Building: set the panel's own select AND the native select, then fire the
+    // native change so RBS repopulates #resourceType / #SearchHoursFrom/To.
+    if (form.building != null) {
+      const nativeBuilding = document.getElementById(RBS_CONTROL_IDS.building);
+      if (nativeBuilding && nativeBuilding.value !== form.building) {
+        const exists = Array.from(nativeBuilding.options).some((o) => o.value === form.building);
+        if (exists || form.building === '') {
+          nativeBuilding.value = form.building;
+          nativeBuilding.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+      if (ui.buildingSelect && !ui.buildingSelect.disabled) {
+        const bOpts = readControlOptions(ui.buildingSelect).map((o) => o.value || o.getAttribute('value') || '');
+        if (bOpts.includes(form.building)) ui.buildingSelect.value = form.building;
+      }
+      // Rebuild the dependent panel selects from the refreshed native cascade.
+      updateTypeAndWindowSelects(ui.typeSelect, ui.startSelect, ui.endSelect);
+    }
+
+    // Room type: resolve against the panel select's own options.
+    if (form.roomType != null && ui.typeSelect) {
+      ui.typeSelect.value = resolveTypeValue(ui.typeSelect, form.roomType);
+    }
+
+    // Capacity.
+    if (form.minCapacity != null && ui.capInput) {
+      ui.capInput.value = String(form.minCapacity);
+    }
+
+    // Free-text search.
+    if (form.search != null && ui.searchInput) {
+      ui.searchInput.value = String(form.search);
+    }
+
+    // Date: select the matching chip (panel reads the selected chip's data-date).
+    if (form.date && ui.dateChips) {
+      const chip = ui.dateChips.querySelector(`[data-date="${form.date}"]`);
+      if (chip) {
+        ui.dateChips.querySelectorAll('.rbs-date-chip').forEach((c) => c.classList.remove('rbs-selected'));
+        chip.classList.add('rbs-selected');
+      }
+    }
+
+    // Window start/end (dims cells; the request stays pinned to DAY_WINDOW).
+    if (form.window && ui.startSelect && ui.endSelect) {
+      const wo = readWindowOptions();
+      if (form.window.start && wo.from.includes(form.window.start)) ui.startSelect.value = form.window.start;
+      if (form.window.end && wo.to.includes(form.window.end)) ui.endSelect.value = form.window.end;
+    }
+
+    // Sort.
+    if (form.sort && ui.sortSelect) {
+      ui.sortSelect.value = form.sort;
+    }
+  }
+
+  // Wire native control changes through to bridge subscribers so the skin can
+  // mirror live page state instead of a one-time mount snapshot.
+  function wireNativeChangeBridge() {
+    const ids = [
+      RBS_CONTROL_IDS.campus,
+      RBS_CONTROL_IDS.building,
+      RBS_CONTROL_IDS.resourceType,
+      RBS_CONTROL_IDS.start,
+      RBS_CONTROL_IDS.end,
+    ];
+    for (const id of ids) {
+      const node = document.getElementById(id);
+      if (node) {
+        node.addEventListener('change', () => notifyBridge(id));
+      }
+    }
+  }
+
+  function installBridge() {
+    if (window.__rbsBridge) return; // never clobber an existing bridge
+    window.__rbsBridge = Object.freeze({
+      version: 1,
+      readState: bridgeReadState,
+      applyForm: bridgeApplyForm,
+      requestReload: (reason) => requestReload(reason || 'nova'),
+      subscribe: (fn) => {
+        if (typeof fn !== 'function') return () => {};
+        bridgeListeners.add(fn);
+        return () => bridgeListeners.delete(fn);
+      },
+      eventName: BRIDGE_EVENT,
+    });
+  }
+
   function init() {
     if (!document.body) {
       window.addEventListener('DOMContentLoaded', init, { once: true });
       return;
     }
+    // Install the bridge on every load, before Nova mounts, so the skin always
+    // finds it. It reads ui/board lazily, so it is safe to install before init.
+    installBridge();
     publishProbe();
     if (document.getElementById('rbs-room-finder-host') ||
         document.getElementById('rbs-room-finder-launcher-host')) {
       return;
     }
-    if (isSearchPage()) initSearchPage();
-    else initLauncher();
+    if (isSearchPage()) {
+      initSearchPage();
+      wireNativeChangeBridge();
+    } else {
+      initLauncher();
+    }
   }
 
   init();
