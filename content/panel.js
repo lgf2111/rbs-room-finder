@@ -720,9 +720,13 @@
   async function fetchRooms(form) {
     const fields = buildSearchPayload({
       token: readToken(),
-      capacityOperator: readIdValue(RBS_CONTROL_IDS.capacityOperator) || '',
+      // 'between' with empty capacities returns every room; the native select can sit
+      // on '<' or '>' from earlier page state, which makes the server return nothing.
+      capacityOperator: 'between',
       campusID: readIdValue(RBS_CONTROL_IDS.campus),
       buildingID: readIdValue(RBS_CONTROL_IDS.building),
+      // Must be literal 'facilities': an empty faciequip makes the endpoint return [].
+      facilities: 'facilities',
       status: 'All',
       resourceType: form.roomType, // option TEXT; '' = all types
       date: form.date,
