@@ -23,7 +23,8 @@
   --rbs-muted: #8b9199;
   --rbs-accent: #c8102e; /* SIT red */
   --rbs-free: #3fb950;
-  --rbs-taken: #8b3a3a;
+  --rbs-taken: #7f2d2d;
+  --rbs-closed: #2a2d33;
   --rbs-font: -apple-system, "Segoe UI", system-ui, sans-serif;
   --rbs-font-mono: ui-monospace, "SF Mono", Monaco, "Cascadia Mono", monospace;
   --rbs-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
@@ -48,6 +49,7 @@
   --rbs-accent: #0d6efd;
   --rbs-free: #198754;
   --rbs-taken: #dc3545;
+  --rbs-closed: #dee2e6;
   --rbs-font: -apple-system, "Segoe UI", system-ui, sans-serif;
   --rbs-font-mono: ui-monospace, "SF Mono", Monaco, "Cascadia Mono", monospace;
   --rbs-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -348,6 +350,10 @@
 
 .rbs-slot-cell.rbs-taken {
   background: var(--rbs-taken);
+}
+
+.rbs-slot-cell.rbs-closed {
+  background: var(--rbs-closed);
 }
 
 .rbs-slot-cell.rbs-unknown {
@@ -665,6 +671,11 @@
 
 .rbs-legend-dot.rbs-free-dot {
   background-color: var(--rbs-free);
+}
+
+.rbs-legend-dot.rbs-closed-dot {
+  background-color: var(--rbs-closed);
+  border: 1px solid var(--rbs-border);
 }
 
 .rbs-legend-dot.rbs-taken-dot {

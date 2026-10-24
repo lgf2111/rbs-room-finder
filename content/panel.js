@@ -27,7 +27,8 @@
     --rbs-muted: #8b9199;
     --rbs-accent: #c8102e; /* SIT red */
     --rbs-free: #3fb950;
-    --rbs-taken: #8b3a3a;
+    --rbs-taken: #7f2d2d;
+    --rbs-closed: #2a2d33;
     --rbs-font: -apple-system, "Segoe UI", system-ui, sans-serif;
     --rbs-font-mono: ui-monospace, "SF Mono", Monaco, "Cascadia Mono", monospace;
     --rbs-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
@@ -492,6 +493,11 @@
   
   .rbs-legend-dot.rbs-free-dot {
     background-color: var(--rbs-free);
+  }
+  
+  .rbs-legend-dot.rbs-closed-dot {
+    background-color: var(--rbs-closed);
+    border: 1px solid var(--rbs-border);
   }
   
   .rbs-legend-dot.rbs-taken-dot {
@@ -1020,13 +1026,12 @@
         el('div', { class: 'rbs-date-weekday', text: weekdays[d.getDay()] }),
         el('div', { class: 'rbs-date-label', text: formatDate(d) })
       ]);
-      // Never default to today: past hours come back with no slots, so the board
-      // would open on a half-empty morning. First chip whose day is still ahead.
+      // Default to TOMORROW, not today: the current day legitimately returns no slots
+      // for hours that have already passed, which reads as a half-empty board.
       const today = new Date();
-      const isToday = d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
-      if (!isToday && !chips.some((c) => c.classList.contains('rbs-selected'))) {
-        chip.classList.add('rbs-selected');
-      }
+      const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+      const isTomorrow = d.getFullYear() === tomorrow.getFullYear() && d.getMonth() === tomorrow.getMonth() && d.getDate() === tomorrow.getDate();
+      if (isTomorrow) chip.classList.add('rbs-selected');
       chips.push(chip);
     }
     return chips;
@@ -1176,7 +1181,7 @@
     
     // Sort select - use sl-select
     const sortSelect = useShoelace
-      ? createControl('sl-select', { size: 'small', label: 'Sort' }, [
+      ? createControl('sl-select', { size: 'small', label: 'Sort', value: 'name' }, [
           createControl('sl-option', { value: 'name', text: 'Name' }),
           createControl('sl-option', { value: 'capacity', text: 'Capacity' })
         ], 'select')
@@ -1194,7 +1199,9 @@
       el('span', { class: 'rbs-legend-dot rbs-free-dot' }),
       el('span', { text: 'Free' }),
       el('span', { class: 'rbs-legend-dot rbs-taken-dot', style: 'margin-left: 8px' }),
-      el('span', { text: 'Taken' })
+      el('span', { text: 'Booked' }),
+      el('span', { class: 'rbs-legend-dot rbs-closed-dot', style: 'margin-left: 8px' }),
+      el('span', { text: 'Not open' })
     ]);
     topbar.appendChild(legend);
     
@@ -1573,7 +1580,10 @@
         cell.title = `${label} — free`;
       } else if (slot.state === 'taken') {
         cell.classList.add('rbs-taken');
-        cell.title = `${label} — taken (status ${slot.status})`;
+        cell.title = `${label} — booked`;
+      } else if (slot.state === 'closed') {
+        cell.classList.add('rbs-closed');
+        cell.title = `${label} — not open for booking`;
       } else {
         cell.classList.add('rbs-unknown');
         cell.title = `${label} — unknown (status ${slot.status})`;
@@ -2101,7 +2111,7 @@
     
     const statsEl = ui.stats.querySelector('#rbs-stats-text');
     if (statsEl) {
-      statsEl.textContent = 'Loading…';
+      statsEl.textContent = 'Loading rooms…';
     }
     
     // Clear any previous error
@@ -2219,7 +2229,7 @@
     const ordered = sortRooms(filtered, form.sort);
     
     if (ordered.length === 0) {
-      showEmptyState('no rooms match these filters — try All rooms');
+      showEmptyState('No rooms match these filters — widen the room type or clear the min capacity.');
       return;
     }
 
@@ -2247,6 +2257,17 @@
         markBlockFailed(roomId);
         accountRoom(roomId);
         updateProgress();
+      },
+      onDone: () => {
+        if (board.generation !== myGen) return;
+        const freeCells = ui.boardRows ? ui.boardRows.querySelectorAll('.rbs-free').length : 0;
+        const total = ui.boardRows ? ui.boardRows.querySelectorAll('.rbs-slot-cell').length : 0;
+        if (total > 0 && freeCells === 0) {
+          const statsEl = ui.stats && ui.stats.querySelector('#rbs-stats-text');
+          if (statsEl) {
+            statsEl.textContent = 'No bookable slots on this date — every slot is closed. Try the next day.';
+          }
+        }
       },
     });
 

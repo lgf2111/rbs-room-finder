@@ -61,6 +61,8 @@ const DEFAULT_WINDOW = Object.freeze({ start: '07:00', end: '22:30' });
 // Live mapping: 1 = free, 3 = booked, 7 = unavailable for this user (quota /
 // permission / not bookable) - verified against the site. Everything else unknown.
 const SLOT_STATUS = Object.freeze({ FREE: 1, TAKEN: 3, UNAVAILABLE: 7 });
+// 7 is NOT "booked" - it is "not open for booking" (past/weekend/permission).
+// Rendering it as taken painted whole closed days red.
 
 const MONTHS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -264,7 +266,7 @@ function classifySlotStatus(status) {
   const n = Number(status);
   if (n === SLOT_STATUS.FREE) return 'free';
   if (n === SLOT_STATUS.TAKEN) return 'taken';
-  if (n === SLOT_STATUS.UNAVAILABLE) return 'taken';
+  if (n === SLOT_STATUS.UNAVAILABLE) return 'closed';
   return 'unknown';
 }
 
@@ -487,6 +489,7 @@ function createSlotQueue(opts) {
   const onLoaded = typeof opts.onLoaded === 'function' ? opts.onLoaded : () => {};
   const onError = typeof opts.onError === 'function' ? opts.onError : () => {};
   const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : () => {};
+  const onDone = typeof opts.onDone === 'function' ? opts.onDone : () => {};
 
   let generation = 0;
   let inFlight = 0; // concurrency gauge; MUST never exceed 1
@@ -584,6 +587,7 @@ function createSlotQueue(opts) {
       }
     } finally {
       running = false;
+      if (generation === myGen) onDone({ done, total });
     }
   }
 
