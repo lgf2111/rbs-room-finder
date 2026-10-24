@@ -378,8 +378,8 @@
   .rbs-room-info {
     display: flex;
     align-items: center;
-    padding: 0 10px;
-    gap: 6px;
+    padding: 0 8px;
+    gap: 5px;
     min-width: 0;
     overflow: hidden;
     font-size: 12px;
@@ -392,8 +392,10 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    min-width: 0;
     line-height: 1.1;
+    flex: 1 1 auto;
+    font-size: 11px;
+    letter-spacing: -0.2px;
   }
   
   .rbs-room-type {
@@ -402,7 +404,7 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 110px;
+    max-width: 88px;
   }
   
   .rbs-room-cap {
@@ -1464,7 +1466,8 @@
     // Room info column
     const roomInfo = el('div', { class: 'rbs-room-info' }, [
       el('span', { class: 'rbs-room-code', text: room.name }),
-      el('span', { class: 'rbs-room-type', text: room.type || '', title: room.type || '' }),
+      // Redundant while a specific room type is selected - that space belongs to the code.
+      (board.form && board.form.roomType) ? null : el('span', { class: 'rbs-room-type', text: room.type || '', title: room.type || '' }),
       el('span', { class: 'rbs-room-cap', text: String(room.capacity) })
     ]);
     row.appendChild(roomInfo);

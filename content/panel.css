@@ -298,8 +298,8 @@
 .rbs-room-info {
   display: flex;
   align-items: center;
-  padding: 0 10px;
-  gap: 6px;
+  padding: 0 8px;
+  gap: 5px;
   min-width: 0;
   overflow: hidden;
   font-size: 12px;
