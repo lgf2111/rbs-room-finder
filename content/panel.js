@@ -1120,7 +1120,7 @@
     // Brand
     const buildingName = readBuildingName() || 'RBS';
     const brand = el('div', { class: 'rbs-brand' }, [
-      el('span', { class: 'rbs-brand-text', text: 'RBS Room Finder' }),
+      el('span', { class: 'rbs-brand-text', text: 'Room Finder' }),
       el('span', { class: 'rbs-brand-building', text: buildingName })
     ]);
     topbar.appendChild(brand);
@@ -1167,7 +1167,7 @@
       ? createControl('sl-input', {
           type: 'number',
           size: 'small',
-          placeholder: 'Min cap',
+          placeholder: 'Min capacity',
           'aria-label': 'Minimum capacity',
           value: ''
         }, null, 'input')
@@ -1175,7 +1175,7 @@
           class: 'rbs-capacity-input',
           type: 'number',
           min: '0',
-          placeholder: 'Min cap',
+          placeholder: 'Min capacity',
           'aria-label': 'Minimum capacity',
           value: ''
         });
@@ -1187,7 +1187,7 @@
       ? createControl('sl-input', {
           type: 'search',
           size: 'small',
-          placeholder: 'Filter rooms',
+          placeholder: 'Search room code',
           clearable: true
         }, null, 'input')
       : el('input', {
@@ -1239,6 +1239,8 @@
     windowControls.appendChild(startSelect);
     windowControls.appendChild(el('span', { text: '–' }));
     windowControls.appendChild(endSelect);
+    windowControls.setAttribute('title', 'Time range for the board');
+    windowControls.setAttribute('aria-label', 'Time range');
     topbar.appendChild(windowControls);
     
     // Sort select - use sl-select
@@ -1285,11 +1287,11 @@
       ? createControl('sl-button', {
           size: 'small',
           variant: 'default',
-          text: 'Native UI'
+          text: 'Native page'
         }, null, 'button')
       : el('button', {
           class: 'rbs-action-btn',
-          text: 'Native UI'
+          text: 'Native page'
         });
     
     // Book on native form button (for drawer)
@@ -1468,7 +1470,7 @@
       el('span', { class: 'rbs-room-code', text: room.name }),
       // Redundant while a specific room type is selected - that space belongs to the code.
       (board.form && board.form.roomType) ? null : el('span', { class: 'rbs-room-type', text: room.type || '', title: room.type || '' }),
-      el('span', { class: 'rbs-room-cap', text: String(room.capacity) })
+      el('span', { class: 'rbs-room-cap', text: String(room.capacity), title: 'Capacity ' + room.capacity })
     ]);
     row.appendChild(roomInfo);
     
@@ -2176,7 +2178,7 @@
     
     const statsEl = ui.stats.querySelector('#rbs-stats-text');
     if (statsEl) {
-      statsEl.textContent = 'Loading rooms…';
+      statsEl.textContent = 'Loading…';
     }
     
     // Clear any previous error
