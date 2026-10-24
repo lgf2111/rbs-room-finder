@@ -747,6 +747,20 @@
     return element;
   }
 
+  // Read the option elements of a control regardless of whether it is a
+  // Shoelace <sl-select> (children are <sl-option>) or a plain <select>
+  // (children are <option> exposed via .options). On the plain-HTML path a
+  // blind querySelectorAll('sl-option') returns [], which silently collapsed
+  // the concrete room type to "All rooms" (~60 rooms). Route every option
+  // read through here so both control kinds behave the same.
+  function readControlOptions(control) {
+    if (!control) return [];
+    if (control.tagName === 'SL-SELECT') {
+      return Array.from(control.querySelectorAll('sl-option'));
+    }
+    return Array.from(control.options || control.querySelectorAll('option') || []);
+  }
+
   // Merge select options preserving current selection
   function mergeSelectOptions(existingOptions, newOptions, currentValue) {
     // existingOptions: array of current option values
@@ -2428,7 +2442,7 @@
           // readRoomTypes() also returns the native placeholder ("Resource Type");
           // feeding that to defaultForm picks it as the first concrete type.
           roomTypes: (function () {
-            const fromSelect = Array.from(ui.typeSelect.querySelectorAll('sl-option'))
+            const fromSelect = readControlOptions(ui.typeSelect)
               .map(o => (o.textContent || '').trim())
               .filter(t => t && !/^Resource Type$/i.test(t));
             return fromSelect.length ? fromSelect : readRoomTypes();
@@ -2443,9 +2457,7 @@
         const resolveValue = (control, wanted) => {
           if (!control || !wanted) return null;
           const norm = (v) => String(v).toLowerCase().replace(/[^a-z0-9]/g, '');
-          const opts = control.tagName === 'SL-SELECT'
-            ? Array.from(control.querySelectorAll('sl-option'))
-            : Array.from(control.options || []);
+          const opts = readControlOptions(control);
           const byValue = opts.find(o => (o.value || o.getAttribute('value') || '') === wanted);
           if (byValue) return byValue.value || byValue.getAttribute('value');
           const byText = opts.find(o => (o.textContent || '').trim() === wanted);
@@ -2461,14 +2473,8 @@
         // Override room type with first concrete type
         if (defaultFormValues.roomType && ui.typeSelect) {
           // Check if this room type exists in the select
-          let roomTypeExists = false;
-          if (ui.useShoelace && ui.typeSelect.tagName === 'SL-SELECT') {
-            roomTypeExists = Array.from(ui.typeSelect.querySelectorAll('sl-option'))
-              .some(opt => opt.value === defaultFormValues.roomType);
-          } else if (ui.typeSelect.options) {
-            roomTypeExists = Array.from(ui.typeSelect.options)
-              .some(opt => opt.value === defaultFormValues.roomType);
-          }
+          const roomTypeExists = readControlOptions(ui.typeSelect)
+            .some(opt => (opt.value || opt.getAttribute('value') || '') === defaultFormValues.roomType);
           
           if (roomTypeExists) {
             ui.typeSelect.value = defaultFormValues.roomType;
@@ -2478,14 +2484,8 @@
         // Set building if available
         if (defaultFormValues.building && ui.buildingSelect && !ui.buildingSelect.disabled) {
           // Check if building exists in select
-          let buildingExists = false;
-          if (ui.useShoelace && ui.buildingSelect.tagName === 'SL-SELECT') {
-            buildingExists = Array.from(ui.buildingSelect.querySelectorAll('sl-option'))
-              .some(opt => opt.value === defaultFormValues.building);
-          } else if (ui.buildingSelect.options) {
-            buildingExists = Array.from(ui.buildingSelect.options)
-              .some(opt => opt.value === defaultFormValues.building);
-          }
+          const buildingExists = readControlOptions(ui.buildingSelect)
+            .some(opt => (opt.value || opt.getAttribute('value') || '') === defaultFormValues.building);
           
           if (buildingExists) {
             ui.buildingSelect.value = defaultFormValues.building;
@@ -2510,10 +2510,13 @@
                 // Selects used to be built with spaced values ("Discussion Room");
                 // they now carry underscored ones ("Discussion_Room"). Pick the first
                 // concrete type ourselves rather than trusting ui.typeSelect.value.
-                const concrete = Array.from(ui.typeSelect.querySelectorAll('sl-option'))
-                  .find(o => o.value && !/^Resource_?Type$/i.test(o.getAttribute('value') || ''));
+                const concrete = readControlOptions(ui.typeSelect)
+                  .find(o => {
+                    const v = o.value || o.getAttribute('value') || '';
+                    return v && !/^Resource_?Type$/i.test(v);
+                  });
                 if (concrete) {
-                  ui.typeSelect.value = concrete.getAttribute('value');
+                  ui.typeSelect.value = concrete.value || concrete.getAttribute('value');
                   currentType = ui.typeSelect.value;
                 }
               }

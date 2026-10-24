@@ -19,7 +19,6 @@
         "https://rbs.singaporetech.edu.sg/*"
       ],
       "js": [
-        "vendor/shoelace.bundle.js",
         "content/native.js",
         "content/panel.js"
       ],

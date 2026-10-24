@@ -523,6 +523,20 @@ test('hasShoelace returns true when customElements.get returns a function', () =
   }
 });
 
+// 25b. hasShoelace with a NULL registry (Chrome content-script isolated world).
+// Chrome hands isolated worlds a null customElements: `typeof` is 'object',
+// value is null. hasShoelace() must return false WITHOUT throwing.
+test('hasShoelace returns false and does not throw when customElements is null', () => {
+  const originalCustomElements = global.customElements;
+  try {
+    global.customElements = null;
+    assert.doesNotThrow(() => native.hasShoelace());
+    assert.equal(native.hasShoelace(), false);
+  } finally {
+    global.customElements = originalCustomElements;
+  }
+});
+
 // 26. defaultForm
 test('defaultForm returns the first concrete room type and native building', () => {
   // Test case 1: Room types available, building present

@@ -840,9 +840,19 @@ function selfCheck(refs) {
  * @returns {boolean}
  */
 function hasShoelace() {
-  if (typeof customElements === 'undefined') return false;
-  // Check for sl-button as a representative component
-  return typeof customElements.get('sl-button') === 'function';
+  // Chrome gives a content-script isolated world a NULL custom element
+  // registry: `typeof window.customElements` is 'object' but its value is
+  // null (the real CustomElementRegistry only lives in the MAIN world). A
+  // plain `typeof customElements === 'undefined'` guard sails right over
+  // that null, so we must require the registry to be truthy, expose a
+  // `get` function, and actually resolve sl-button before trusting it.
+  try {
+    if (!customElements) return false;
+    if (typeof customElements.get !== 'function') return false;
+    return typeof customElements.get('sl-button') === 'function';
+  } catch (_err) {
+    return false;
+  }
 }
 
 /**
