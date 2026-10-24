@@ -22,13 +22,12 @@ import {
   type Room,
   type Slot,
 } from '@/lib/native-bridge';
+import type { CartItem, CartModel } from '@/components/SelectionDrawer';
+import { findRangeAt, totalSlots, type SlotRange } from '@/lib/selection';
 import type { BoardModel, BoardRow } from '@/lib/useBoard';
 
-export interface Selection {
-  roomId: string;
-  startIdx: number;
-  endIdx: number;
-}
+/** The board's selection is now a list of ranges (the cart). */
+export type Selection = SlotRange[];
 
 /** Minutes-since-midnight -> "HH:MM" (for a slot's end label). */
 function minutesToLabel(mins: number): string {
@@ -43,8 +42,8 @@ interface BoardProps {
    *  render a neutral placeholder thumbnail of the same size. */
   images: Record<string, string>;
   cursorIndex: number;
-  selection: Selection | null;
-  onSelectRange: (roomId: string, startIdx: number, endIdx: number, extend: boolean) => void;
+  selection: Selection;
+  onCellClick: (roomId: string, idx: number, mods: { shift: boolean; meta: boolean }) => void;
   registerRowRef: (roomId: string, el: HTMLElement | null) => void;
 }
 
@@ -219,7 +218,7 @@ function Row({
   zebra: boolean;
   cursor: boolean;
   photo: string;
-  selection: Selection | null;
+  selection: Selection;
   windowStart: number;
   windowEnd: number;
   onCellClick: (roomId: string, idx: number, e: React.MouseEvent) => void;
@@ -259,11 +258,7 @@ function Row({
         axis.map((label, i) => {
           const mins = timeToMinutes(label);
           const outside = mins < windowStart || mins >= windowEnd;
-          const selected =
-            !!selection &&
-            selection.roomId === row.room.id &&
-            i >= Math.min(selection.startIdx, selection.endIdx) &&
-            i <= Math.max(selection.startIdx, selection.endIdx);
+          const selected = findRangeAt(selection, row.room.id, i) !== -1;
           const endLabel = minutesToLabel(mins + 30);
           return (
             <SlotCell
@@ -290,7 +285,7 @@ export function Board({
   images,
   cursorIndex,
   selection,
-  onSelectRange,
+  onCellClick,
   registerRowRef,
 }: BoardProps) {
   const { axis, rows } = model;
@@ -298,13 +293,11 @@ export function Board({
   const windowStart = timeToMinutes(form.window.start);
   const windowEnd = timeToMinutes(form.window.end);
 
-  const onCellClick = React.useCallback(
+  const cellClick = React.useCallback(
     (roomId: string, idx: number, e: React.MouseEvent) => {
-      const extend = e.shiftKey && !!selection && selection.roomId === roomId;
-      if (extend && selection) onSelectRange(roomId, selection.startIdx, idx, true);
-      else onSelectRange(roomId, idx, idx, false);
+      onCellClick(roomId, idx, { shift: e.shiftKey, meta: e.metaKey || e.ctrlKey });
     },
-    [onSelectRange, selection]
+    [onCellClick]
   );
 
   // ERROR state: the room-list fetch failed. Name the failing endpoint and
@@ -368,7 +361,7 @@ export function Board({
               selection={selection}
               windowStart={windowStart}
               windowEnd={windowEnd}
-              onCellClick={onCellClick}
+              onCellClick={cellClick}
               onRetry={model.retryRoom}
               registerRowRef={registerRowRef}
             />
@@ -409,31 +402,17 @@ function Legend() {
   );
 }
 
-/** Derive the drawer model for a selection (pure, uses native.js helpers). */
-export function selectionSummary(
-  axis: string[],
-  rows: BoardRow[],
-  selection: Selection,
-  date: string
-): {
-  room: Room | null;
-  date: string;
-  window: { start: string; end: string; count: number };
-  conflict: boolean;
-  freeCount: number;
-  bookedCount: number;
-  durationMinutes: number;
-} {
-  const row = rows.find((r) => r.room.id === selection.roomId) ?? null;
-  const win = rangeToWindow(axis, selection.startIdx, selection.endIdx);
-  const cells = row && row.state.kind === 'loaded' ? row.state.cells : [];
-  const conflict = rangeHasConflict(cells, selection.startIdx, selection.endIdx);
+/** Build one cart line for a single selected range (pure; native.js helpers). */
+function buildCartItem(axis: string[], rows: BoardRow[], range: SlotRange): CartItem | null {
+  const row = rows.find((r) => r.room.id === range.roomId) ?? null;
+  if (!row) return null;
+  const win = rangeToWindow(axis, range.start, range.end);
+  const cells = row.state.kind === 'loaded' ? row.state.cells : [];
+  const conflict = rangeHasConflict(cells, range.start, range.end);
 
-  const lo = Math.min(selection.startIdx, selection.endIdx);
-  const hi = Math.max(selection.startIdx, selection.endIdx);
   let freeCount = 0;
   let bookedCount = 0;
-  for (let i = lo; i <= hi; i++) {
+  for (let i = range.start; i <= range.end; i++) {
     const c = cells[i];
     if (!c) continue;
     if (c.state === 'free') freeCount++;
@@ -441,12 +420,49 @@ export function selectionSummary(
   }
 
   return {
-    room: row?.room ?? null,
-    date,
+    id: range.id,
+    roomId: row.room.id,
+    roomName: row.room.name,
+    roomCode: row.room.serial || row.room.name,
+    roomType: row.room.type,
+    capacity: row.room.capacity,
     window: win,
-    conflict,
+    durationMinutes: win.count * 30,
     freeCount,
     bookedCount,
-    durationMinutes: win.count * 30,
+    conflict,
+  };
+}
+
+/**
+ * Derive the whole cart model from the current multi-range selection (pure).
+ * Each range becomes a line; the totals sum across every line. Ranges whose
+ * room is no longer present (e.g. after a re-filter) are dropped.
+ */
+export function buildCart(
+  axis: string[],
+  rows: BoardRow[],
+  selection: Selection,
+  date: string
+): CartModel {
+  const items: CartItem[] = [];
+  for (const range of selection) {
+    const item = buildCartItem(axis, rows, range);
+    if (item) items.push(item);
+  }
+  let totalFree = 0;
+  let totalBooked = 0;
+  for (const it of items) {
+    totalFree += it.freeCount;
+    totalBooked += it.bookedCount;
+  }
+  const slots = totalSlots(items.map((it) => ({ id: it.id, roomId: it.roomId, start: 0, end: it.window.count - 1 })));
+  return {
+    date,
+    items,
+    totalSlots: slots,
+    totalMinutes: slots * 30,
+    totalFree,
+    totalBooked,
   };
 }

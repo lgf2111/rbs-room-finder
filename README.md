@@ -159,10 +159,30 @@ third-party libraries. The only persistence API it uses is
 status line. The manifest declares only the `storage` permission plus the RBS
 host permission (same-origin fetch needs nothing more).
 
-## The full-page UI (v2)
+## The full-page UI (v3 — full-site takeover)
 
-On `/SRB001/SRB001Page` the extension hides the native page and mounts its own
-app in a shadow root covering the viewport:
+Nova now owns the **entire** RBS origin, not just the search page. On **any**
+path of `https://rbs.singaporetech.edu.sg/*` it hides the native page and mounts
+its own app in a shadow root covering the viewport. `?nova=0` is the escape hatch
+that leaves the untouched native page (and the old launcher) in place. Exactly
+**one** nova root exists per document (the singleton guard), and `content/panel.js`
+mirrors the same decision so the two UIs never race.
+
+The app is a **persistent shell** that survives route changes (no remount flash,
+no duplicated chrome):
+
+- **Shell** — brand, the RBS building context, nav (**Search / Bookings / Help**),
+  and a persistent, keyboard-reachable **Native UI** escape hatch on every route.
+- **Router** — a client-side router over the History API. Nav clicks `pushState`
+  the real RBS paths (Search = `/SRB001/SRB001Page`); `popstate` restores the
+  view; a deep link to any path renders that route directly; Back/Forward work.
+- **Routes** — **Search** is the full board (below). **Bookings**, **Help**, and
+  every unmapped path get an **honest screen** that names the page and the
+  endpoint we do not have, with a button that reveals the native UI for that URL.
+  Nova **never** renders fake rows, fake bookings, or invented data for an
+  endpoint it cannot call.
+
+On the search route, the board is the same engine as before:
 
 - **Top bar** — building, room type (`All rooms` = every facility type), min
   capacity, room-name filter, a 14-day date strip (today selected), day window,
@@ -170,8 +190,15 @@ app in a shadow root covering the viewport:
 - **Board** — one row per room: code, type, capacity, then 30 half-hour cells
   (07:00–21:30 for a 07:00–22:30 window) on a shared axis. Green = free
   (`SLT_STATUS` 1), red = taken (3), grey = unknown, dimmed = outside the window.
-  Click a cell, shift-click to extend: the drawer shows the window, the slot
-  count and any conflict, then **Book on native form**.
+- **Multi-slot selection (the cart)** — pick several slots at once: **click** for
+  one, **shift-click** for a contiguous range in the same room, **cmd/ctrl-click**
+  to add another range in any room, and **click a selected cell** to remove its
+  range. Selected cells get the selection outline. The drawer becomes a cart:
+  every selected room+range is listed with its time window, duration, and
+  free/booked counts plus a remove control, with a total summary across lines.
+  The **Confirm booking** button stays **disabled** with a visible note — the
+  booking endpoint is not mapped, so Nova never fakes a booking and never falls
+  back to clicking native submits.
 - **Status bar** — `n/m rooms loaded · Done`, request state, and a retry control
   only when a request failed.
 

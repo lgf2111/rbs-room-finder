@@ -88,7 +88,7 @@ export interface TopBarProps {
  * booking handoff. The Nova board owns fetching, so this bar does NOT trigger a
  * native reload — it emits a normalised BoardForm through `onForm`.
  */
-export function TopBar({ onForm, onForceReload, statusLine, onRevealNative, searchRef }: TopBarProps) {
+export function TopBar({ onForm, onForceReload, statusLine, searchRef }: TopBarProps) {
   const dateChips = React.useMemo<DateChip[]>(() => readDateChips(14), []);
 
   // Live native page state, refreshed whenever the native cascade moves.
@@ -394,16 +394,9 @@ export function TopBar({ onForm, onForceReload, statusLine, onRevealNative, sear
             </Select>
           </Field>
 
-          {/* Native UI is a utility, NOT the primary action → secondary. */}
-          <Button
-            variant="secondary"
-            className="h-control"
-            onClick={onRevealNative}
-            data-testid="nova-native-btn"
-          >
-            Native UI
-          </Button>
-          {/* The ONE primary (accent) action. */}
+          {/* The ONE primary (accent) action. The persistent "Native UI"
+              escape hatch lives in the app shell (App.tsx), present on every
+              route, so it is not duplicated here. */}
           <Button className="h-control" onClick={onSearch} data-testid="nova-search-btn">
             <Search className="h-3.5 w-3.5" />
             Search

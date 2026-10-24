@@ -399,8 +399,26 @@ export function createSlotQueue(opts: {
 // --- Native page: hide/reveal + booking handoff (never submits) -------------
 
 const NATIVE_HIDE_STYLE_ID = 'rbs-native-hide-nova';
+const HOST_ID = 'rbs-room-finder-host';
 
-/** Hide the native RBS page chrome so the Nova app owns the viewport. */
+/**
+ * Hide the native RBS page chrome so the Nova app owns the ENTIRE viewport.
+ *
+ * Two layers, because Nova now owns every path of the origin, not just the
+ * search page whose containers the committed NATIVE_HIDE_SELECTORS cover:
+ *
+ *  1. the known container selectors (header/nav/footer/.body-content/…) get
+ *     `display:none !important` — the historical behaviour, kept verbatim;
+ *  2. a generic rule hides EVERY direct child of <body> except the Nova host,
+ *     and pins the host as a fixed, full-viewport, opaque overlay. This makes
+ *     an UNMAPPED page (whose body is arbitrary markup the selectors miss) fully
+ *     covered too. Nodes are only hidden, NEVER removed — the native postback
+ *     handlers and booking popups must survive, so revealNativeUI() can restore
+ *     the exact page for the current URL.
+ *
+ * The <html> class rbsx-native-hidden is the single on/off signal (matching the
+ * repo convention); everything keys off it so revealing is a pure class removal.
+ */
 export function hideNativeUI(): void {
   try {
     document.documentElement.classList.add('rbsx-native-hidden');
@@ -414,20 +432,45 @@ export function hideNativeUI(): void {
       '#divSearchContentResult',
       '#divbtnbottom',
     ];
+    const rules: string[] = [];
+    // Layer 1: the known native containers.
+    for (const s of selectors) {
+      rules.push(`html.rbsx-native-hidden ${s} { display: none !important; }`);
+    }
+    // Layer 2: own the whole viewport. Hide every body child that is NOT the
+    // Nova host, then make the host a fixed, opaque, full-viewport overlay so
+    // no native body content (even on an unmapped page) peeks through.
+    rules.push(
+      `html.rbsx-native-hidden body > :not(#${HOST_ID}) { display: none !important; }`,
+      `html.rbsx-native-hidden #${HOST_ID} {` +
+        ' position: fixed !important; inset: 0 !important; z-index: 2147483000 !important;' +
+        ' display: block !important; background: #0b0c0e !important; overflow: auto !important;' +
+        ' }',
+      // Keep the page from scrolling behind the overlay.
+      `html.rbsx-native-hidden, html.rbsx-native-hidden body { overflow: hidden !important; margin: 0 !important; }`
+    );
     const style = document.createElement('style');
     style.id = NATIVE_HIDE_STYLE_ID;
-    style.textContent = selectors.map((s) => `${s} { display: none !important; }`).join('\n');
+    style.textContent = rules.join('\n');
     document.head.appendChild(style);
   } catch {
     /* non-fatal */
   }
 }
 
-/** Reveal the native RBS page (used by the booking handoff and on failure). */
+/** Reveal the native RBS page (used by the Native UI escape hatch, the booking
+ *  handoff, and the auto-reveal on repeated failure). Removes the hide layer
+ *  entirely; the native DOM was only hidden, never removed, so the exact page
+ *  for the current URL reappears intact. */
 export function revealNativeUI(): void {
   const style = document.getElementById(NATIVE_HIDE_STYLE_ID);
   if (style) style.remove();
   document.documentElement.classList.remove('rbsx-native-hidden');
+}
+
+/** Whether Nova is currently hiding the native page. */
+export function isNativeHidden(): boolean {
+  return document.documentElement.classList.contains('rbsx-native-hidden');
 }
 
 function cssEscape(s: string): string {

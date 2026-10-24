@@ -36,18 +36,20 @@ import { PortalContainerProvider } from '@/lib/portal-container';
 import tailwindCss from '@/styles/tailwind.out.css';
 
 const HOST_ID = 'rbs-room-finder-host';
-const SEARCH_PATH = '/SRB001/SRB001Page';
 
 /**
- * The single source of truth for "is Nova on?". Nova is the DEFAULT on the
- * search page. It is turned OFF only by the `?nova=0` escape hatch (kept for
- * one release so the old panel can still be reached). content/panel.js mirrors
- * this exact logic so only one of the two UIs ever mounts.
+ * The single source of truth for "is Nova on?". Nova now owns the ENTIRE RBS
+ * origin: it mounts on ANY path of https://rbs.singaporetech.edu.sg/* (the
+ * content script already matches the whole origin). It is turned OFF only by
+ * the `?nova=0` escape hatch, which leaves the untouched native page (and the
+ * old content/panel.js launcher) in place. content/panel.js mirrors this exact
+ * logic so only one of the two UIs ever mounts, and only one nova root exists
+ * per document (the singleton guard below).
  */
 function novaDefaultOn(): boolean {
   try {
     if (/(?:^|[?&])nova=0(?:&|$)/.test(location.search)) return false; // escape hatch
-    return location.pathname.indexOf(SEARCH_PATH) !== -1;
+    return true; // own every path on the origin
   } catch {
     return false;
   }

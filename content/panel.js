@@ -2747,15 +2747,18 @@
     });
   }
 
-  // Phase 3: Nova is the DEFAULT skin on the search page. This mirrors the exact
-  // decision in src/main.tsx (novaDefaultOn): Nova owns the search page unless
-  // the `?nova=0` escape hatch is present. When Nova owns it, the old panel
-  // board stands down entirely so the two UIs never race or double-fetch. The
-  // old path still runs for `?nova=0` and on every non-search page (launcher).
+  // Full-site takeover: Nova is now the DEFAULT skin on EVERY path of the RBS
+  // origin, not just the search page. This mirrors the exact decision in
+  // src/main.tsx (novaDefaultOn): Nova owns the whole origin unless the
+  // `?nova=0` escape hatch is present. When Nova owns the page, the old panel
+  // (board OR launcher) stands down entirely so the two UIs never race, never
+  // double-fetch, and the launcher never appears on top of the Nova shell. The
+  // old path only runs under `?nova=0` (board on the search page, launcher
+  // elsewhere), reaching the untouched native page.
   function novaDefaultOn() {
     try {
       if (/(?:^|[?&])nova=0(?:&|$)/.test(location.search)) return false; // escape hatch
-      return isSearchPage();
+      return true; // own every path on the origin
     } catch (e) {
       return false;
     }
@@ -2774,11 +2777,11 @@
         document.getElementById('rbs-room-finder-launcher-host')) {
       return;
     }
+    // Nova owns every page by default. Do NOT build the old board or the
+    // launcher (either would double up on the Nova shell / double-fetch). Only
+    // the `?nova=0` escape hatch falls through to the old panel UI.
+    if (novaDefaultOn()) return;
     if (isSearchPage()) {
-      // Nova owns the search page by default. Do NOT build the old board (that
-      // would issue its own SearchSRB001List + per-room slot fills). Only the
-      // `?nova=0` escape hatch falls through to the old panel UI.
-      if (novaDefaultOn()) return;
       initSearchPage();
       wireNativeChangeBridge();
     } else {

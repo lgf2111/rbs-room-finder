@@ -1,217 +1,185 @@
 /*
  * src/App.tsx
  *
- * Phase 2B app shell: the shadcn top bar PLUS the ported board.
+ * Full-site takeover shell.
  *
- * App owns the BoardForm (emitted by the top bar), runs the board engine
- * (useBoard: skeleton rows -> lazy single-flight slot fill), and wires the
- * range-selection drawer, the keyboard shortcuts and the booking handoff. It
- * hides the native RBS chrome on mount so the app owns the viewport, and
- * reveals it again for the handoff / on failure.
+ * Nova now owns the ENTIRE RBS origin, not just the search page. App is the
+ * persistent application shell:
+ *
+ *   - a top bar with the brand, the RBS building context, and nav
+ *     (Search / Bookings / Help), plus a persistent, keyboard-reachable
+ *     "Native UI" escape hatch — all rendered ONCE and surviving route changes
+ *     (no remount flash, no duplicated chrome);
+ *   - a client-side router over the History API (src/lib/router): nav clicks
+ *     pushState the real RBS paths, popstate restores the view, and a deep link
+ *     to any path renders that route directly;
+ *   - a route-aware body: the Search route is the full board (SearchView);
+ *     Bookings / Help / any unmapped path get an honest screen that names the
+ *     missing endpoint and reveals the native page.
+ *
+ * It hides the native DOM on mount (class on <html>, nodes never removed) and
+ * reveals it for the Native UI control, the booking handoff, or auto-reveal
+ * after repeated failures. content/native.js is untouched.
  */
 import * as React from 'react';
 
-import { Board, selectionSummary, type Selection } from '@/components/Board';
-import { SelectionDrawer, type DrawerModel } from '@/components/SelectionDrawer';
-import { TopBar } from '@/components/TopBar';
+import { SearchView } from '@/components/SearchView';
+import { UnmappedScreen } from '@/components/UnmappedScreen';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
-  DAY_WINDOW,
-  harvestRoomImages,
   hideNativeUI,
-  imgPathToDataUri,
-  keyToAction,
+  readBuildings,
   revealNativeUI,
-  type BoardForm,
+  type NativeOption,
 } from '@/lib/native-bridge';
+import { NAV_ITEMS, useRouter, type RouteInfo } from '@/lib/router';
 
-/**
- * Build the status line as a human sentence:
- *   "6 rooms · 144 free slots · loading 3/6"      (while filling)
- *   "6 rooms · 144 free slots"                     (done, no failures)
- *   "6 rooms · 140 free slots · 1 failed"          (done, with failures)
- *   "0 rooms"                                      (empty)
- * An explicit error is appended when the room-list fetch failed.
- */
-function statusSentence(s: {
-  total: number;
-  loaded: number;
-  failed: number;
-  freeSlots: number;
-  done: boolean;
-  error?: string;
-}): string {
-  if (s.error) return s.error;
-  if (s.total === 0) return s.done ? 'No rooms' : 'Loading rooms…';
-  const parts: string[] = [];
-  parts.push(`${s.total} ${s.total === 1 ? 'room' : 'rooms'}`);
-  parts.push(`${s.freeSlots} free ${s.freeSlots === 1 ? 'slot' : 'slots'}`);
-  if (!s.done) parts.push(`loading ${s.loaded}/${s.total}`);
-  else if (s.failed > 0) parts.push(`${s.failed} failed`);
-  return parts.join(' · ');
+const HOST_ID = 'rbs-room-finder-host';
+
+/** Reveal the untouched native page for the current URL and hide the Nova app. */
+function revealNativeAndHideApp(): void {
+  revealNativeUI();
+  const host = document.getElementById(HOST_ID);
+  if (host) host.style.display = 'none';
 }
-import { useBoard } from '@/lib/useBoard';
 
-const INITIAL_FORM: BoardForm = {
-  building: '',
-  roomType: '',
-  minCapacity: 0,
-  search: '',
-  date: '',
-  window: { start: DAY_WINDOW.start, end: DAY_WINDOW.end },
-  sort: 'name',
-};
+/** The brand + building context + nav + the persistent Native UI control. */
+function Shell({
+  route,
+  navigate,
+  onRevealNative,
+  building,
+}: {
+  route: RouteInfo;
+  navigate: (path: string) => void;
+  onRevealNative: () => void;
+  building: string;
+}) {
+  return (
+    <header
+      data-testid="nova-shell"
+      className="flex items-center gap-4 border-b border-border bg-card px-4 py-2"
+    >
+      <div className="flex items-center gap-2">
+        <span className="rounded bg-primary px-1.5 py-0.5 text-[11px] font-bold text-primary-foreground">
+          RBS
+        </span>
+        <span className="text-sm font-semibold text-foreground">Room Finder</span>
+      </div>
+
+      <span aria-hidden className="text-muted-foreground">
+        ·
+      </span>
+      <span className="text-xs text-muted-foreground" data-testid="nova-shell-building">
+        {building || 'SIT Room Booking'}
+      </span>
+
+      <nav className="ml-4 flex items-center gap-1" data-testid="nova-nav" aria-label="Primary">
+        {NAV_ITEMS.map((item) => {
+          const active = item.kind === route.kind;
+          return (
+            <button
+              key={item.kind}
+              type="button"
+              data-testid={`nova-nav-${item.kind}`}
+              aria-current={active ? 'page' : undefined}
+              onClick={() => navigate(item.path)}
+              className={cn(
+                'rounded-md px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                active
+                  ? 'bg-secondary text-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+              )}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* Persistent, unobtrusive escape hatch — present on every route and
+          keyboard reachable. The one thing between the user and a site they
+          cannot use if Nova breaks. */}
+      <Button
+        variant="secondary"
+        className="ml-auto h-control"
+        onClick={onRevealNative}
+        data-testid="nova-native-btn"
+      >
+        Native UI
+      </Button>
+    </header>
+  );
+}
 
 export function App() {
-  const [form, setForm] = React.useState<BoardForm>(INITIAL_FORM);
-  const [cursor, setCursor] = React.useState(0);
-  const [selection, setSelection] = React.useState<Selection | null>(null);
-  const searchRef = React.useRef<HTMLInputElement>(null);
+  const { route, navigate } = useRouter();
 
-  const model = useBoard(form);
-  const { rows, axis, status } = model;
-
-  // Room photos: the JSON API carries none, so harvest the hidden native result
-  // cards (rsrcId -> base64 PNG) and expose them as data: URIs. The native list
-  // is re-rendered per search, so re-harvest whenever the room set changes (and
-  // again once the fill is done, in case the native cards arrived late).
-  const [imageMap, setImageMap] = React.useState<Record<string, string>>({});
-  const roomsKey = React.useMemo(() => rows.map((r) => r.room.id).join(','), [rows]);
-  React.useEffect(() => {
-    const harvest = () => {
-      const raw = harvestRoomImages();
-      const next: Record<string, string> = {};
-      for (const id of Object.keys(raw)) next[id] = imgPathToDataUri(raw[id]);
-      setImageMap(next);
-    };
-    harvest();
-    // A second pass shortly after lets a late native re-render settle.
-    const t = setTimeout(harvest, 300);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomsKey, status.done]);
-
-  // Hide the native page while the app is mounted; always reveal on unmount.
+  // Hide the native page while Nova is mounted; always reveal on unmount so the
+  // page is never left with neither UI.
   React.useEffect(() => {
     hideNativeUI();
     return () => revealNativeUI();
   }, []);
 
-  // Keep the cursor within the current row set.
+  // Re-hide the native page on every Nova navigation: a prior Native UI reveal
+  // (or an unmapped-screen reveal) hid the host and showed the native body; when
+  // the user navigates back into a Nova route we take the viewport back.
   React.useEffect(() => {
-    setCursor((c) => Math.min(c, Math.max(0, rows.length - 1)));
-  }, [rows.length]);
+    const host = document.getElementById(HOST_ID);
+    if (host) host.style.display = '';
+    hideNativeUI();
+  }, [route.href]);
 
-  const onForm = React.useCallback((f: BoardForm) => {
-    setForm(f);
-    setSelection(null);
-  }, []);
+  // Building context for the shell: read once from the native building select
+  // (its selected option), falling back to a generic label on unmapped pages
+  // that carry no such control.
+  const building = React.useMemo(() => {
+    try {
+      const opts: NativeOption[] = readBuildings();
+      const sel = document.getElementById('building') as HTMLSelectElement | null;
+      const current = sel?.value ?? '';
+      const match = opts.find((o) => o.value === current && o.value);
+      return match ? `Building ${match.text}` : opts.find((o) => o.value)?.text ? `Building ${opts.find((o) => o.value)!.text}` : '';
+    } catch {
+      return '';
+    }
+  }, [route.href]);
 
-  const onSelectRange = React.useCallback(
-    (roomId: string, startIdx: number, endIdx: number, extend: boolean) => {
-      setSelection((prev) => {
-        if (extend && prev && prev.roomId === roomId) {
-          return { roomId, startIdx: prev.startIdx, endIdx };
-        }
-        return { roomId, startIdx, endIdx };
-      });
-      const i = rows.findIndex((r) => r.room.id === roomId);
-      if (i >= 0) setCursor(i);
-    },
-    [rows]
-  );
-
-  const revealNative = React.useCallback(() => {
-    revealNativeUI();
-    const host = document.getElementById('rbs-room-finder-host');
-    if (host) host.style.display = 'none';
-  }, []);
-
-  // Keyboard shortcuts (native.js keyToAction maps the key -> action).
+  // A persistent "d" shortcut reveals the native UI from anywhere (matching the
+  // keyToAction('d') contract). It lives at the shell so it works on every
+  // route, not just the board.
   React.useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const t = e.target as HTMLElement | null;
       const inInput =
         !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-      const action = keyToAction(e.key.toLowerCase(), { inInput });
-      if (!action) return;
-      e.preventDefault();
-      switch (action) {
-        case 'focusSearch':
-          searchRef.current?.focus();
-          break;
-        case 'rowDown':
-          setCursor((c) => Math.min(rows.length - 1, c + 1));
-          break;
-        case 'rowUp':
-          setCursor((c) => Math.max(0, c - 1));
-          break;
-        case 'handoff': {
-          const row = rows[cursor];
-          if (row) onSelectRange(row.room.id, 0, axis.length - 1, false);
-          break;
-        }
-        case 'toggleNative':
-          revealNative();
-          break;
-        case 'clear':
-          setSelection(null);
-          break;
+      if (inInput) return;
+      if (e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        revealNativeAndHideApp();
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [rows, cursor, axis.length, onSelectRange, revealNative]);
-
-  const drawer: DrawerModel | null = React.useMemo(() => {
-    if (!selection) return null;
-    return selectionSummary(axis, rows, selection, form.date);
-  }, [selection, axis, rows, form.date]);
-
-  // Count free slots across the rooms whose slots have loaded, so the status
-  // line can read like a sentence ("6 rooms · 144 free slots · loading 3/6").
-  const freeSlots = React.useMemo(() => {
-    let n = 0;
-    for (const r of rows) {
-      if (r.state.kind !== 'loaded') continue;
-      for (const c of r.state.cells) if (c && c.state === 'free') n++;
-    }
-    return n;
-  }, [rows]);
-
-  const statusLine = (
-    <span data-testid="nova-status-counts">
-      {statusSentence({
-        total: status.total,
-        loaded: status.loaded,
-        failed: status.failed,
-        freeSlots,
-        done: status.done,
-        error: status.error,
-      })}
-    </span>
-  );
+  }, []);
 
   return (
     <div className="flex h-screen min-h-0 w-full flex-col">
-      <TopBar
-        onForm={onForm}
-        onForceReload={model.reload}
-        statusLine={statusLine}
-        onRevealNative={revealNative}
-        searchRef={searchRef}
+      <Shell
+        route={route}
+        navigate={navigate}
+        onRevealNative={revealNativeAndHideApp}
+        building={building}
       />
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <Board
-          model={model}
-          form={form}
-          images={imageMap}
-          cursorIndex={cursor}
-          selection={selection}
-          onSelectRange={onSelectRange}
-          registerRowRef={model.observeRow}
-        />
+      <div className="min-h-0 flex-1 overflow-hidden" data-testid="nova-body">
+        {route.kind === 'search' ? (
+          <SearchView onRevealNative={revealNativeAndHideApp} />
+        ) : (
+          <UnmappedScreen route={route} onRevealNative={revealNativeAndHideApp} />
+        )}
       </div>
-      <SelectionDrawer model={drawer} onClose={() => setSelection(null)} />
     </div>
   );
 }
