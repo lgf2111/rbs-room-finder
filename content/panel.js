@@ -12,6 +12,8 @@
 
   const SEARCH_PATH = '/SRB001/SRB001Page';
   const STORAGE_KEY = 'rbsLastBoard';
+  // The axis the board always draws; the user's window only dims cells outside it.
+  const DAY_WINDOW = Object.freeze({ start: '07:00', end: '22:30' });
   const PANEL_CSS = `:host{all:initial}
   
   /* RBS theme variables */
@@ -1018,10 +1020,30 @@
         el('div', { class: 'rbs-date-weekday', text: weekdays[d.getDay()] }),
         el('div', { class: 'rbs-date-label', text: formatDate(d) })
       ]);
-      if (i === 0) chip.classList.add('rbs-selected');
+      // Never default to today: past hours come back with no slots, so the board
+      // would open on a half-empty morning. First chip whose day is still ahead.
+      const today = new Date();
+      const isToday = d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
+      if (!isToday && !chips.some((c) => c.classList.contains('rbs-selected'))) {
+        chip.classList.add('rbs-selected');
+      }
       chips.push(chip);
     }
     return chips;
+  }
+
+
+  // Keep a requested time inside the drawn day window (07:00-22:30).
+  function clampToDay(value, fallback) {
+    const v = String(value == null ? '' : value).trim();
+    if (!/^\d{1,2}:\d{2}$/.test(v)) return fallback;
+    const [h, m] = v.split(':').map(Number);
+    const mins = h * 60 + m;
+    const lo = timeToMinutes(DAY_WINDOW.start);
+    const hi = timeToMinutes(DAY_WINDOW.end);
+    if (mins < lo) return DAY_WINDOW.start;
+    if (mins > hi) return DAY_WINDOW.end;
+    return v;
   }
 
   function buildTopBar(shellUI, roomTypes, windowOpts, attachListeners = true) {
@@ -1503,8 +1525,11 @@
       // sl-option values use underscores ("Discussion_Room") for DOM safety.
       resourceType: form.roomType ? String(form.roomType).replace(/_/g, ' ') : '',
       date: form.date,
-      start: form.window.start,
-      end: form.window.end,
+      // Always search the whole day at this stage: the server only returns rooms that
+      // have slots inside the requested window, which silently drops rooms when the
+      // native start/end pins are narrow.
+      start: DAY_WINDOW.start,
+      end: DAY_WINDOW.end,
     });
     const json = await postForm(RBS_ENDPOINTS.searchList, fields);
     return parseRooms(json);
@@ -1512,7 +1537,9 @@
 
   // Fetch one room's slots. Returns parseSlots() output.
   async function fetchSlots(room, form) {
-    const fields = buildSlotPayload(room, form.date, form.window, 'All', readToken());
+    // Pinned to the full day so the board always shows 07:00-22:30 and the chosen
+    // window only dims cells (see paintBlock) instead of truncating the axis.
+    const fields = buildSlotPayload(room, form.date, DAY_WINDOW, 'All', readToken());
     const json = await postForm(RBS_ENDPOINTS.slotList, fields);
     return parseSlots(json);
   }
@@ -2143,7 +2170,12 @@
     const form = {
       roomType: currentUI.typeSelect.value,
       date: currentUI.dateChips.querySelector('.rbs-date-chip.rbs-selected')?.dataset.date || formatDate(new Date()),
-      window: { start: currentUI.startSelect.value, end: currentUI.endSelect.value },
+      // Narrow windows are clamped into the day window: asking the server for a
+      // window it no longer offers (e.g. an inherited 12:00 pin) returns slots that
+      // start late and then align to nothing.
+      // The board is pinned to the drawn day window; the user's window only dims
+      // cells (see paintBlock). Never narrow the request itself.
+      window: { start: DAY_WINDOW.start, end: DAY_WINDOW.end },
       minCapacity: Number(currentUI.capInput.value) || 0,
       sort: currentUI.sortSelect.value,
     };
@@ -2199,7 +2231,9 @@
     board.queue = createSlotQueue({
       fetcher: (room) => fetchSlots(room, form),
       date: form.date,
-      window: form.window,
+      // Must match what fetchSlots actually requests (DAY_WINDOW), or the cache key
+      // is built from the user's window and every narrowed window refetches/ghosts.
+      window: DAY_WINDOW,
       status: 'All',
       cache: board.cache,
       onLoaded: (roomId, slots) => {
