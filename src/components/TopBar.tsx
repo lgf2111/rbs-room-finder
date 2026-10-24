@@ -519,7 +519,7 @@ export function TopBar({ onForm, onForceReload, statusLine, searchRef }: TopBarP
       >
         <span className="nova-mono">{dateChips[state.dateIndex]?.label ?? '—'}</span>
         <span aria-hidden>·</span>
-        <span>{state.roomType === ALL_ROOMS ? 'All rooms' : state.roomType}</span>
+        <span>{roomTypeLabel(state.roomType, roomTypes)}</span>
         <span aria-hidden>·</span>
         <span className="nova-mono">
           {state.windowStart}–{state.windowEnd}
@@ -538,6 +538,20 @@ export function TopBar({ onForm, onForceReload, statusLine, searchRef }: TopBarP
       </div>
     </div>
   );
+}
+
+/**
+ * Resolve the DISPLAY label for the selected room-type value. The control
+ * stores the option's underlying value (a GUID on the real site); the status
+ * bar must show the human TEXT, not the GUID. Look the value up in the same
+ * option list the Type select was built from (SelectItem value = value||text),
+ * falling back to the raw value only when no label exists. The API payload is
+ * unchanged — it still sends the GUID value (see fetchRooms).
+ */
+function roomTypeLabel(value: string, options: NativeOption[]): string {
+  if (value === ALL_ROOMS) return 'All rooms';
+  const match = options.find((o) => (o.value || o.text) === value);
+  return match ? match.text : value;
 }
 
 /** One compact diagnostics row (defect C self-report). */
