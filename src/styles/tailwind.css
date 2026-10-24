@@ -101,6 +101,9 @@
   --nova-closed-fg: #aeb4bc;
   --nova-closed-line: rgba(255, 255, 255, 0.10);
   --nova-unknown: #202327;
+  /* The hour divider tone, reused for each slot cell's top + bottom border so
+     the board reads as discrete 32px rows. */
+  --nova-hour-border: #3a3f48;
   --nova-zebra: rgba(255, 255, 255, 0.028);
   --nova-hover: rgba(255, 255, 255, 0.07);
   --nova-sel: #e6b800;         /* warm gold selection outline, fights neither
@@ -135,6 +138,14 @@
 .nova-cell {
   height: var(--nova-row-h);
   min-width: 0;
+  /* A 1px top AND bottom border in the hour-divider tone draws every slot as a
+     row band. box-sizing:border-box keeps the cell exactly 32px tall (the
+     borders sit inside, not added on top). The row carries a -1px bottom
+     margin (see .nova-row) so one row's bottom border overlaps the next row's
+     top border — the seam between adjacent rows stays a single 1px line, never
+     a double-thick 2px one. */
+  border-top: 1px solid var(--nova-hour-border);
+  border-bottom: 1px solid var(--nova-hour-border);
   border-right: 1px solid var(--rbs-border-hex);
   box-sizing: border-box;
   cursor: pointer;
@@ -224,6 +235,14 @@
  */
 .nova-row {
   background: var(--rbs-page);
+  /* Pull each row up 1px so its cells' top border overlaps the previous row's
+     bottom border: adjacent 1px seams collapse into a single line, never 2px.
+     Margin does not change the row's own measured height (stays 32px). */
+  margin-top: -1px;
+}
+/* The first row sits flush under the sticky header (no pull-up needed). */
+.nova-row:first-child {
+  margin-top: 0;
 }
 .nova-row--zebra {
   background: color-mix(in srgb, var(--rbs-page) 100%, #fff 2.8%);
@@ -291,4 +310,82 @@
    board. shadcn components already use ring-ring; make the fallback obvious. */
 .nova-root :focus-visible {
   outline-color: hsl(var(--ring));
+}
+
+/*
+ * Room photo thumbnail + magnified hover preview.
+ *
+ * The thumbnail is a fixed 20x20 square sitting immediately left of the room
+ * code. When a room has no photo a neutral placeholder of the SAME size shows,
+ * so the row never shifts. The preview is portalled into the shadow root and
+ * positioned (position:fixed) near the cursor; it fades in briefly.
+ */
+.nova-thumb {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  overflow: hidden;
+  cursor: zoom-in;
+  outline: none;
+}
+.nova-thumb[data-has-photo='0'] {
+  cursor: default;
+}
+.nova-thumb-img {
+  width: 20px;
+  height: 20px;
+  object-fit: cover;
+  display: block;
+  border-radius: 3px;
+  border: 1px solid var(--rbs-border-hex);
+  image-rendering: auto;
+}
+.nova-thumb-placeholder {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  border: 1px solid var(--rbs-border-hex);
+  background: var(--rbs-surface2);
+  /* a faint diagonal so an empty photo slot reads as "no image", not "loading" */
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.05) 0,
+    rgba(255, 255, 255, 0.05) 1px,
+    transparent 1px,
+    transparent 5px
+  );
+}
+.nova-thumb:focus-visible .nova-thumb-img {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.nova-thumb-preview {
+  position: fixed;
+  z-index: 2147483000;
+  padding: 4px;
+  border-radius: 6px;
+  border: 1px solid var(--rbs-border-hex);
+  background: var(--rbs-surface);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  animation: nova-thumb-fade 120ms ease-out;
+}
+.nova-thumb-preview-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 3px;
+}
+@keyframes nova-thumb-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nova-thumb-preview { animation: none; }
 }

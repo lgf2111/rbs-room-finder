@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import {
+  CONTROL_IDS,
   DEFAULT_WINDOW,
   getBridge,
   readBuildings,
@@ -48,13 +49,19 @@ interface PageState {
   windowOpts: WindowOptions;
 }
 
-/** Read the live page state, preferring the bridge and falling back to DOM. */
+/**
+ * Read the live page state straight from the native DOM.
+ *
+ * We deliberately do NOT use bridge.readState() for the option lists: the
+ * panel.js bridge returns room types as bare strings (including the "Resource
+ * Type" placeholder) while returning buildings as {value,text} objects, so the
+ * two shapes disagree — rendering those strings as NativeOptions produced empty
+ * labels and an off-by-one count. native-bridge's readBuildings / readRoomTypes
+ * / readWindowOptions are consistent NativeOption readers that also drop
+ * placeholders, so reading the DOM directly is both correct and bridge-agnostic
+ * (it works whether or not panel.js wired the native cascade).
+ */
 function readPageState(): PageState {
-  const bridge = getBridge();
-  if (bridge) {
-    const s = bridge.readState();
-    return { buildings: s.buildings, roomTypes: s.roomTypes, windowOpts: s.windowOptions };
-  }
   return { buildings: readBuildings(), roomTypes: readRoomTypes(), windowOpts: readWindowOptions() };
 }
 
@@ -62,6 +69,10 @@ export interface TopBarProps {
   /** Emitted whenever the form changes (and once on mount). The Nova board
    *  consumes this; the engine fetches on its own, so no native reload fires. */
   onForm: (form: BoardForm) => void;
+  /** Force a reload with the current form (the explicit Search button), even
+   *  when no filter value changed. Without this, clicking Search on an
+   *  unchanged form would be a no-op (zero POSTs) — the reported defect. */
+  onForceReload?: () => void;
   /** Rendered into the status line (live rooms/failures/in-flight/elapsed). */
   statusLine?: React.ReactNode;
   /** Reveal the native page (hide the app). */
@@ -77,7 +88,7 @@ export interface TopBarProps {
  * booking handoff. The Nova board owns fetching, so this bar does NOT trigger a
  * native reload — it emits a normalised BoardForm through `onForm`.
  */
-export function TopBar({ onForm, statusLine, onRevealNative, searchRef }: TopBarProps) {
+export function TopBar({ onForm, onForceReload, statusLine, onRevealNative, searchRef }: TopBarProps) {
   const dateChips = React.useMemo<DateChip[]>(() => readDateChips(14), []);
 
   // Live native page state, refreshed whenever the native cascade moves.
@@ -102,21 +113,35 @@ export function TopBar({ onForm, statusLine, onRevealNative, searchRef }: TopBar
     };
   });
 
-  // Subscribe to native control changes: re-read the live options and reconcile
-  // the current selection against them (e.g. a building cascade repopulating
-  // room types / window options).
+  // Keep the nova selects in sync with the native option lists AFTER load.
+  //
+  // On the real page the native building / room-type lists are not final at
+  // mount: a change cascade populates them ~1s later. A one-time mount snapshot
+  // therefore shows only placeholders and looks unselectable (the reported
+  // defect). We re-read the native options whenever they move, by BOTH:
+  //   - listening for `change` on the native control ids, AND
+  //   - polling until the option lists are stable (a ~3s budget), since the
+  //     cascade may append options without firing a `change` we can see.
+  // Each refresh repopulates the nova selects while KEEPING the current
+  // selection whenever it still exists in the new list.
   React.useEffect(() => {
-    const bridge = getBridge();
-    if (!bridge) return;
-    const unsub = bridge.subscribe(() => {
+    let cancelled = false;
+
+    // Re-read live options and reconcile the current selection against them.
+    const refresh = () => {
+      if (cancelled) return;
       const next = readPageState();
       setPage(next);
       setState((s) => {
-        const typeStillThere = s.roomType === ALL_ROOMS || next.roomTypes.some((t) => (t.value || t.text) === s.roomType);
+        const typeStillThere =
+          s.roomType === ALL_ROOMS || next.roomTypes.some((t) => (t.value || t.text) === s.roomType);
+        const buildingStillThere =
+          s.building === ALL_BUILDINGS || next.buildings.some((b) => b.value === s.building);
         const startStillThere = next.windowOpts.from.includes(s.windowStart);
         const endStillThere = next.windowOpts.to.includes(s.windowEnd);
         return {
           ...s,
+          building: buildingStillThere ? s.building : ALL_BUILDINGS,
           roomType: typeStillThere ? s.roomType : next.roomTypes[0]?.value ?? ALL_ROOMS,
           windowStart: startStillThere
             ? s.windowStart
@@ -130,8 +155,69 @@ export function TopBar({ onForm, statusLine, onRevealNative, searchRef }: TopBar
               : next.windowOpts.to[next.windowOpts.to.length - 1] ?? '',
         };
       });
-    });
-    return unsub;
+    };
+
+    // The bridge fires on native `change` when panel.js wired it; harmless when
+    // it did not. We also attach our OWN listeners so nova does not depend on
+    // panel.js having wired the cascade.
+    const bridge = getBridge();
+    const unsub = bridge ? bridge.subscribe(refresh) : () => {};
+
+    const NATIVE_IDS = [
+      CONTROL_IDS.campus,
+      CONTROL_IDS.building,
+      CONTROL_IDS.resourceType,
+      CONTROL_IDS.start,
+      CONTROL_IDS.end,
+    ];
+    const onNativeChange = () => refresh();
+    const nodes: HTMLElement[] = [];
+    for (const id of NATIVE_IDS) {
+      const node = document.getElementById(id);
+      if (node) {
+        node.addEventListener('change', onNativeChange);
+        nodes.push(node);
+      }
+    }
+    // The native page may dispatch a one-shot "ready" signal when the cascade
+    // settles; listen for it too (cheap, optional).
+    document.addEventListener('rbs:ready', onNativeChange);
+
+    // Poll until the option counts stop changing, within a ~3s budget. This
+    // catches cascades that append options without a `change` event we hear.
+    const signature = () => {
+      const s = readPageState();
+      return `${s.buildings.length}|${s.roomTypes.length}|${s.windowOpts.from.length}|${s.windowOpts.to.length}`;
+    };
+    let lastSig = signature();
+    let stableTicks = 0;
+    const POLL_MS = 150;
+    const BUDGET_MS = 3000;
+    let elapsed = 0;
+    const timer = setInterval(() => {
+      if (cancelled) return;
+      elapsed += POLL_MS;
+      const sig = signature();
+      if (sig !== lastSig) {
+        lastSig = sig;
+        stableTicks = 0;
+        refresh();
+      } else {
+        stableTicks += 1;
+      }
+      // Stop once the lists have been stable for a few ticks or the budget ran
+      // out, so the poll never runs indefinitely.
+      if (elapsed >= BUDGET_MS || stableTicks >= 4) clearInterval(timer);
+    }, POLL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      unsub();
+      for (const node of nodes) node.removeEventListener('change', onNativeChange);
+      document.removeEventListener('rbs:ready', onNativeChange);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Translate the local Nova state into the BridgeForm (to keep native controls
@@ -180,6 +266,9 @@ export function TopBar({ onForm, statusLine, onRevealNative, searchRef }: TopBar
     const form = toForm(state);
     getBridge()?.applyForm(form as BridgeForm);
     onForm(form);
+    // Explicit Search always re-runs the search, even if no value changed, so
+    // the button is never a no-op.
+    onForceReload?.();
   }
 
   return (
@@ -207,8 +296,8 @@ export function TopBar({ onForm, statusLine, onRevealNative, searchRef }: TopBar
                 <SelectValue placeholder="Building" />
               </SelectTrigger>
               <SelectContent>
-                {buildings.map((b) => (
-                  <SelectItem key={b.value || b.text} value={b.value || ALL_BUILDINGS}>
+                {buildings.map((b, i) => (
+                  <SelectItem key={`${b.value || b.text}-${i}`} value={b.value || ALL_BUILDINGS}>
                     {b.text}
                   </SelectItem>
                 ))}
@@ -223,8 +312,8 @@ export function TopBar({ onForm, statusLine, onRevealNative, searchRef }: TopBar
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL_ROOMS}>All rooms</SelectItem>
-                {roomTypes.map((t) => (
-                  <SelectItem key={t.value || t.text} value={t.value || t.text}>
+                {roomTypes.map((t, i) => (
+                  <SelectItem key={`${t.value || t.text}-${i}`} value={t.value || t.text}>
                     {t.text}
                   </SelectItem>
                 ))}

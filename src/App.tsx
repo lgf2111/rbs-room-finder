@@ -16,7 +16,9 @@ import { SelectionDrawer, type DrawerModel } from '@/components/SelectionDrawer'
 import { TopBar } from '@/components/TopBar';
 import {
   DAY_WINDOW,
+  harvestRoomImages,
   hideNativeUI,
+  imgPathToDataUri,
   keyToAction,
   revealNativeUI,
   type BoardForm,
@@ -67,6 +69,26 @@ export function App() {
 
   const model = useBoard(form);
   const { rows, axis, status } = model;
+
+  // Room photos: the JSON API carries none, so harvest the hidden native result
+  // cards (rsrcId -> base64 PNG) and expose them as data: URIs. The native list
+  // is re-rendered per search, so re-harvest whenever the room set changes (and
+  // again once the fill is done, in case the native cards arrived late).
+  const [imageMap, setImageMap] = React.useState<Record<string, string>>({});
+  const roomsKey = React.useMemo(() => rows.map((r) => r.room.id).join(','), [rows]);
+  React.useEffect(() => {
+    const harvest = () => {
+      const raw = harvestRoomImages();
+      const next: Record<string, string> = {};
+      for (const id of Object.keys(raw)) next[id] = imgPathToDataUri(raw[id]);
+      setImageMap(next);
+    };
+    harvest();
+    // A second pass shortly after lets a late native re-render settle.
+    const t = setTimeout(harvest, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomsKey, status.done]);
 
   // Hide the native page while the app is mounted; always reveal on unmount.
   React.useEffect(() => {
@@ -173,6 +195,7 @@ export function App() {
     <div className="flex h-screen min-h-0 w-full flex-col">
       <TopBar
         onForm={onForm}
+        onForceReload={model.reload}
         statusLine={statusLine}
         onRevealNative={revealNative}
         searchRef={searchRef}
@@ -181,6 +204,7 @@ export function App() {
         <Board
           model={model}
           form={form}
+          images={imageMap}
           cursorIndex={cursor}
           selection={selection}
           onSelectRange={onSelectRange}

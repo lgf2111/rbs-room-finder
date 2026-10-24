@@ -11,6 +11,7 @@
 import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
+import { RoomThumbnail } from '@/components/RoomThumbnail';
 import { cn } from '@/lib/utils';
 import {
   axisGridTemplate,
@@ -38,6 +39,9 @@ function minutesToLabel(mins: number): string {
 interface BoardProps {
   model: BoardModel;
   form: BoardForm;
+  /** rsrcId -> data: URI photo (harvested from the native cards). Missing ids
+   *  render a neutral placeholder thumbnail of the same size. */
+  images: Record<string, string>;
   cursorIndex: number;
   selection: Selection | null;
   onSelectRange: (roomId: string, startIdx: number, endIdx: number, extend: boolean) => void;
@@ -91,11 +95,13 @@ function AxisHeader({ axis, template }: { axis: string[]; template: string }) {
   );
 }
 
-function RoomCell({ room, cursor }: { room: Room; cursor: boolean }) {
+function RoomCell({ room, cursor, photo }: { room: Room; cursor: boolean; photo: string }) {
+  const roomCode = room.serial || room.name;
   return (
     <div role="rowheader" className={cn('nova-roomcol', cursor && 'nova-roomcol--cursor')}>
+      <RoomThumbnail src={photo} roomCode={roomCode} />
       <span className="nova-mono truncate font-medium text-foreground" title={room.name}>
-        {room.serial || room.name}
+        {roomCode}
       </span>
       <span className="truncate text-[10px] text-muted-foreground" title={room.type}>
         {room.type}
@@ -199,6 +205,7 @@ function Row({
   template,
   zebra,
   cursor,
+  photo,
   selection,
   windowStart,
   windowEnd,
@@ -211,6 +218,7 @@ function Row({
   template: string;
   zebra: boolean;
   cursor: boolean;
+  photo: string;
   selection: Selection | null;
   windowStart: number;
   windowEnd: number;
@@ -235,7 +243,7 @@ function Row({
       className={cn('nova-row grid', zebra && 'nova-row--zebra')}
       style={{ gridTemplateColumns: template }}
     >
-      <RoomCell room={row.room} cursor={cursor} />
+      <RoomCell room={row.room} cursor={cursor} photo={photo} />
       {row.state.kind === 'failed' ? (
         <div
           role="gridcell"
@@ -279,6 +287,7 @@ function Row({
 export function Board({
   model,
   form,
+  images,
   cursorIndex,
   selection,
   onSelectRange,
@@ -355,6 +364,7 @@ export function Board({
               template={template}
               zebra={i % 2 === 1}
               cursor={i === cursorIndex}
+              photo={images[row.room.id] ?? ''}
               selection={selection}
               windowStart={windowStart}
               windowEnd={windowEnd}

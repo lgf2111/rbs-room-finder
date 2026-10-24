@@ -307,22 +307,62 @@ async function postForm(endpoint: string, fields: Record<string, string>): Promi
   }
 }
 
-/** Fetch the room list for a form. Returns parseRooms() output. */
+/** Fetch the room list for a form. Returns parseRooms() output.
+ *
+ * Every filter the top bar can set is driven straight from `form` into the POST
+ * body, so a control change is actually applied on the wire — not read back
+ * from the (now hidden) native DOM, which nova never mutates. Only `campusID`
+ * still comes from the native page, since nova exposes no campus control and
+ * the native campus value is the single source of truth for it.
+ *
+ * The chosen min capacity is sent as the server's MinCapacity bound; the free
+ * text goes in Search. Both are ALSO applied client-side (applyClientFilters)
+ * so the board stays correct even against a server that ignores them. */
 export async function fetchRooms(form: BoardForm): Promise<Room[]> {
+  const minCap = form.minCapacity > 0 ? String(form.minCapacity) : '';
   const fields = (g.buildSearchPayload as NonNullable<Window['buildSearchPayload']>)({
     token: readToken(),
     capacityOperator: 'between',
+    minCapacity: minCap,
+    maxCapacity: '',
+    singleCapacity: '',
     campusID: readIdValue(CONTROL_IDS.campus),
-    buildingID: readIdValue(CONTROL_IDS.building),
+    // Building comes from the form (the nova control), NOT the native select —
+    // nova owns the page and never writes the native #building, so reading it
+    // back would always be '' and every control would be cosmetic.
+    buildingID: form.building ? String(form.building) : '',
     facilities: 'facilities',
     status: 'All',
+    search: form.search ? String(form.search) : '',
     resourceType: form.roomType ? String(form.roomType).replace(/_/g, ' ') : '',
     date: form.date,
     start: DAY_WINDOW.start,
     end: DAY_WINDOW.end,
   });
+  // Keep the native #building in sync (best-effort) so the booking handoff,
+  // which clicks the native room card, stays consistent with the nova filter.
+  syncNativeBuilding(form.building ?? '');
   const json = await postForm(ENDPOINTS.searchList, fields);
   return g.parseRooms ? g.parseRooms(json) : [];
+}
+
+/** Best-effort: mirror the chosen building into the native select so the
+ *  booking handoff operates on the same building the nova filter shows. Never
+ *  throws; the nova fetch already carries the value independently. */
+function syncNativeBuilding(building: string): void {
+  try {
+    const sel = document.getElementById(CONTROL_IDS.building) as HTMLSelectElement | null;
+    if (!sel) return;
+    const want = building || '';
+    if (sel.value === want) return;
+    const exists = Array.from(sel.options).some((o) => o.value === want);
+    if (exists) {
+      sel.value = want;
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  } catch {
+    /* non-fatal */
+  }
 }
 
 /** Fetch one room's slots (always the full day window). parseSlots() output. */
@@ -558,4 +598,39 @@ export function readDateChips(count = 14): DateChip[] {
 /** Whether the native search controls exist on the page. */
 export function nativeControlsPresent(): boolean {
   return Boolean(document.getElementById(CONTROL_IDS.resourceType));
+}
+
+/**
+ * Harvest a map of rsrcId -> base64 PNG (no "data:" prefix) from the hidden
+ * native result cards. The JSON room API carries no image, so the only source
+ * of a room photo is the native result list: each card exposes `data-rsrcid`
+ * and `data-imgpath`. Call this AFTER each search, since the native list is
+ * re-rendered per query. Returns a plain object keyed by rsrcId.
+ *
+ * Reads only; never mutates the native DOM. Cards with no imgpath are omitted
+ * so the caller can render a neutral placeholder.
+ */
+export function harvestRoomImages(): Record<string, string> {
+  const out: Record<string, string> = {};
+  try {
+    const cards = document.querySelectorAll('#resultList [data-rsrcid]');
+    cards.forEach((card) => {
+      const el = card as HTMLElement;
+      const id = el.getAttribute('data-rsrcid') || '';
+      if (!id) return;
+      const path = (el.getAttribute('data-imgpath') || '').trim();
+      if (path) out[id] = path;
+    });
+  } catch {
+    /* non-fatal: no images is a valid state (placeholders render) */
+  }
+  return out;
+}
+
+/** Turn a harvested imgpath (bare base64 PNG) into a data: URI for an <img>. */
+export function imgPathToDataUri(imgpath: string): string {
+  const p = (imgpath || '').trim();
+  if (!p) return '';
+  if (/^data:/i.test(p)) return p; // already a data URI (defensive)
+  return `data:image/png;base64,${p}`;
 }
