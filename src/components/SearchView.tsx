@@ -196,6 +196,7 @@ export function SearchView({ onRevealNative }: { onRevealNative: () => void }) {
           selection={selection}
           onCellClick={onCellClick}
           registerRowRef={model.observeRow}
+          onRevealNative={onRevealNative}
         />
       </div>
       <SelectionDrawer

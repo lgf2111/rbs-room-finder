@@ -31,6 +31,7 @@
 import { createRoot, type Root } from 'react-dom/client';
 
 import { App } from '@/App';
+import { isErrorOrAuthPage, revealNativeUI } from '@/lib/native-bridge';
 import { PortalContainerProvider } from '@/lib/portal-container';
 // Compiled Tailwind, inlined as text (esbuild loader { '.css': 'text' }).
 import tailwindCss from '@/styles/tailwind.out.css';
@@ -82,6 +83,18 @@ function clearNovaRoots(shadow: ShadowRoot): void {
 
 function mount(): void {
   if (!novaDefaultOn()) return; // escape hatch: leave the old panel.js path alone.
+
+  // NEVER take over an RBS error or auth page. The native 'Session Timeout/Error!'
+  // dialog and the /Account/Login page are the user's only way back in after a
+  // session expires; Nova leaves them completely untouched — no hide class, no
+  // shell, no root. If an earlier page in this same tab already hid the native
+  // UI (the SPA-style History navigation that lands here on expiry never reloads
+  // the document, so our <html> hide class can still be present), strip it so
+  // the native dialog and its Ok button are fully visible and clickable.
+  if (isErrorOrAuthPage()) {
+    revealNativeUI();
+    return;
+  }
 
   const g = guard();
   if (g.mounted) return; // singleton: already mounted, every other entry is a no-op.

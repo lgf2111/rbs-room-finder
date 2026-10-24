@@ -19,6 +19,7 @@ import * as React from 'react';
 
 import {
   alignSlots,
+  ApiError,
   buildSlotAxis,
   createSlotQueue,
   DAY_WINDOW,
@@ -51,6 +52,10 @@ export interface BoardStatus {
   done: boolean;
   /** Set when the room-list fetch itself failed (board kept intact). */
   error?: string;
+  /** True when the room-list fetch came back as the RBS session-expired page
+   *  (HTML instead of JSON). The board shows a dedicated 'Session expired'
+   *  recovery state rather than a generic error or a zero-room 'No rooms'. */
+  sessionExpired?: boolean;
 }
 
 export interface BoardModel {
@@ -153,8 +158,32 @@ export function useBoard(form: BoardForm): BoardModel {
         roomList = await fetchRooms(form);
       } catch (e) {
         if (cancelled) return;
-        // Leave the previous board intact; surface the error on the status line.
-        setStatus((s) => ({ ...s, done: true, error: (e as Error).message }));
+        const err = e as Error;
+        const expired = err instanceof ApiError && err.sessionExpired;
+        if (expired) {
+          // The session expired mid-use: RBS answered the room-list POST with
+          // its 'Session Timeout/Error!' page instead of JSON. Do NOT keep the
+          // stale rows as if they were current, and do NOT fall through to a
+          // zero-room 'No rooms match' state. Clear the board + the slot cache
+          // for this generation and surface a dedicated recovery state.
+          if (queueRef.current) queueRef.current.bumpGeneration();
+          cacheRef.current.clear();
+          setRows([]);
+          setStatus({
+            total: 0,
+            loaded: 0,
+            failed: 0,
+            inFlight: 0,
+            elapsedMs: 0,
+            done: true,
+            error: err.message,
+            sessionExpired: true,
+          });
+          return;
+        }
+        // Otherwise leave the previous board intact; surface the error on the
+        // status line.
+        setStatus((s) => ({ ...s, done: true, error: err.message, sessionExpired: false }));
         return;
       }
       if (cancelled) return;

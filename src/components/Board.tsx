@@ -45,6 +45,9 @@ interface BoardProps {
   selection: Selection;
   onCellClick: (roomId: string, idx: number, mods: { shift: boolean; meta: boolean }) => void;
   registerRowRef: (roomId: string, el: HTMLElement | null) => void;
+  /** Reveal the untouched native page so the user can sign in again. Used by
+   *  the 'Session expired' state's Sign in action. */
+  onRevealNative: () => void;
 }
 
 /** The sticky header: one room-label cell + one cell per axis label (N+1). The
@@ -287,6 +290,7 @@ export function Board({
   selection,
   onCellClick,
   registerRowRef,
+  onRevealNative,
 }: BoardProps) {
   const { axis, rows } = model;
   const template = React.useMemo(() => axisGridTemplate(axis), [axis]);
@@ -300,10 +304,50 @@ export function Board({
     [onCellClick]
   );
 
+  // SESSION-EXPIRED state: the room-list POST came back as the RBS
+  // 'Session Timeout/Error!' page instead of JSON. This is distinct from a
+  // generic error and from the empty 'No rooms' state: we state the expiry
+  // plainly, name the endpoint that answered with the error page, and offer two
+  // actions — Reload (refetch with a cache-buster) and Sign in (reveal the
+  // native page so the user can log back in). No rows are painted.
+  if (model.status.sessionExpired) {
+    return (
+      <div
+        className="flex flex-col items-start gap-3 p-6 text-sm"
+        data-testid="nova-board-expired"
+        role="alert"
+      >
+        <div className="font-semibold text-destructive">Session expired</div>
+        <div className="text-muted-foreground">
+          Your SIT session has expired, so RBS returned its sign-in page instead
+          of availability data. Sign in again, then reload the board.
+        </div>
+        <div
+          className="nova-mono text-[11px] text-muted-foreground"
+          data-testid="nova-board-expired-endpoint"
+        >
+          endpoint: POST {model.endpoints.searchList}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={model.reload}
+            data-testid="nova-board-expired-reload"
+          >
+            Reload
+          </Button>
+          <Button onClick={onRevealNative} data-testid="nova-board-expired-signin">
+            Sign in
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   // ERROR state: the room-list fetch failed. Name the failing endpoint and
   // offer Retry. The previous board (if any) stays intact; this panel only
   // takes over when there are no rows to show.
-  if (model.status.error && rows.length === 0) {
+  if (model.status.error && rows.length === 0 && !model.status.sessionExpired) {
     return (
       <div
         className="flex flex-col items-start gap-3 p-6 text-sm"

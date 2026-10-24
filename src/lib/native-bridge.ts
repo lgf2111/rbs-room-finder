@@ -270,11 +270,31 @@ function readIdValue(id: string): string {
 /** Error carrying the HTTP status so the UI can report "HTTP n". */
 export class ApiError extends Error {
   httpStatus: number;
-  constructor(message: string, httpStatus: number) {
+  /** True when the response was the RBS 'Session Timeout/Error!' page (HTML at
+   *  HTTP 200, or the session-dialog markup) returned instead of JSON — i.e. the
+   *  SIT session expired mid-use. The board renders a dedicated recovery state
+   *  for this, never a generic 'unparseable JSON' or a zero-room 'No rooms'. */
+  sessionExpired: boolean;
+  constructor(message: string, httpStatus: number, sessionExpired = false) {
     super(message);
     this.name = 'ApiError';
     this.httpStatus = httpStatus;
+    this.sessionExpired = sessionExpired;
   }
+}
+
+/**
+ * Does this response body look like the RBS 'Session Timeout/Error!' page
+ * rather than data? RBS answers an expired session with that page as HTML at
+ * HTTP 200 (the availability POSTs stop returning JSON). We match either a raw
+ * HTML document or the session-dialog markers in its body.
+ */
+export function bodyIsSessionError(text: string): boolean {
+  if (!text) return false;
+  if (/^\s*<(!doctype|html)/i.test(text)) return true;
+  if (/Session\s*Timeout\/Error!/i.test(text)) return true;
+  if (/sessiontimeout/i.test(text)) return true;
+  return false;
 }
 
 async function postForm(endpoint: string, fields: Record<string, string>): Promise<unknown> {
@@ -283,6 +303,9 @@ async function postForm(endpoint: string, fields: Record<string, string>): Promi
     resp = await fetch(endpoint, {
       method: 'POST',
       credentials: 'same-origin',
+      // Never serve a stale (expired) response from the HTTP cache: a Reload
+      // after signing back in must hit the live backend.
+      cache: 'no-store',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
         'X-Requested-With': 'XMLHttpRequest',
@@ -297,13 +320,17 @@ async function postForm(endpoint: string, fields: Record<string, string>): Promi
   try {
     return JSON.parse(text);
   } catch {
-    const looksLikeHtml = /^\s*<(!doctype|html)/i.test(text);
-    throw new ApiError(
-      looksLikeHtml
-        ? 'RBS returned a web page instead of data — your SIT session has probably expired.'
-        : 'the RBS API returned an error (unparseable JSON)',
-      resp.status
-    );
+    // A 200 (or any status) carrying the RBS error page instead of JSON means
+    // the SIT session expired mid-use. Tag it so the board can show a dedicated
+    // 'Session expired' recovery state instead of a confusing parse error.
+    if (bodyIsSessionError(text)) {
+      throw new ApiError(
+        'Your SIT session has expired, so RBS returned its sign-in page instead of data.',
+        resp.status,
+        true
+      );
+    }
+    throw new ApiError('the RBS API returned an error (unparseable JSON)', resp.status);
   }
 }
 
@@ -400,6 +427,40 @@ export function createSlotQueue(opts: {
 
 const NATIVE_HIDE_STYLE_ID = 'rbs-native-hide-nova';
 const HOST_ID = 'rbs-room-finder-host';
+
+/**
+ * Is the CURRENT document an RBS error or auth page that Nova must never take
+ * over? Nova owns every normal path, but the real site's own
+ * 'Session Timeout/Error!' dialog and the /Account/Login page are the only way
+ * back in after a session expires — hiding them would trap the user. Detect it
+ * three ways, any of which is conclusive:
+ *
+ *   1. the pathname is /Home/ErrorPage or /Account/Login (case-insensitive,
+ *      ignoring any trailing segment/query);
+ *   2. the URL query carries both `code=` and `exceptionMsg=` (RBS's error
+ *      redirect shape, e.g. ?code=1001&exceptionMsg=sessiontimeout);
+ *   3. the document body already renders the session dialog — its visible
+ *      'Session Timeout/Error!' text, or a `sessiontimeout` marker.
+ *
+ * Read-only: it inspects location + the DOM and never mutates anything.
+ */
+export function isErrorOrAuthPage(): boolean {
+  try {
+    const path = (location.pathname || '').toLowerCase();
+    if (path.indexOf('/home/errorpage') !== -1) return true;
+    if (path.indexOf('/account/login') !== -1) return true;
+
+    const q = (location.search || '').toLowerCase();
+    if (/[?&]code=/.test(q) && /[?&]exceptionmsg=/.test(q)) return true;
+
+    const bodyText = document.body ? document.body.textContent || '' : '';
+    if (/Session\s*Timeout\/Error!/i.test(bodyText)) return true;
+    if (/sessiontimeout/i.test(bodyText)) return true;
+  } catch {
+    /* if we cannot tell, fall through — the mount guard treats unknown as safe */
+  }
+  return false;
+}
 
 /**
  * Hide the native RBS page chrome so the Nova app owns the ENTIRE viewport.
