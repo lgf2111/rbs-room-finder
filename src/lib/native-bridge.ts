@@ -209,6 +209,42 @@ export function axisGridTemplate(axis: string[]): string {
   return `200px repeat(${axis.length}, minmax(0, 1fr))`;
 }
 
+/**
+ * One classified axis cell, shared by BOTH the sticky header and every data
+ * row so a header cell and the cell beneath it always agree on their divider
+ * weight (defect A).
+ *
+ * The axis runs 07:00, 07:30, 08:00, ... in 30-minute steps. An "hour block"
+ * is the pair {:00, :30}; the STRONG (thick) divider belongs at the END of each
+ * block — i.e. on the `:30` cell — so blocks read as 07:00|07:30 ‖ 08:00|08:30.
+ * The `:00` cell gets only a THIN divider (the inner split of a block).
+ *
+ *   - blockEnd: true on a `:30` cell -> thick border-right (end of the hour).
+ *   - label / isHourStart: the `:00` start of a block, used only for the header
+ *     label emphasis (not the divider).
+ *
+ * We deliberately do NOT use content/native.js buildAxisHeaderCells here: it
+ * marks `:00` as the hour cell (the OLD, wrong boundary) and content/native.js
+ * is frozen for this task. This shared reader is the single source of truth the
+ * header and rows both consume.
+ */
+export interface AxisCell {
+  label: string;
+  /** Start of an hour block (label ends in ":00"). */
+  isHourStart: boolean;
+  /** End of an hour block (label ends in ":30"): the STRONG divider cell. */
+  blockEnd: boolean;
+}
+
+export function axisCells(axis: string[]): AxisCell[] {
+  if (!Array.isArray(axis)) return [];
+  return axis.map((label) => ({
+    label,
+    isHourStart: /:00$/.test(label),
+    blockEnd: /:30$/.test(label),
+  }));
+}
+
 /** Align a room's slots onto the axis (native.js alignSlots). */
 export function alignSlots(axis: string[], slots: Slot[]): (Slot | null)[] {
   if (typeof g.alignSlots === 'function') return g.alignSlots(axis, slots);

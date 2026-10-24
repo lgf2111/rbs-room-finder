@@ -15,14 +15,18 @@ import {
   CONTROL_IDS,
   DEFAULT_WINDOW,
   getBridge,
-  readBuildings,
   readDateChips,
-  readRoomTypes,
   readWindowOptions,
   type BridgeForm,
   type DateChip,
   type NativeOption,
 } from '@/lib/native-bridge';
+import {
+  discoverOptions,
+  logDiagnostics,
+  nudgeNativeControl,
+  type Diagnostics,
+} from '@/lib/option-discovery';
 
 import type { BoardForm } from '@/lib/native-bridge';
 
@@ -47,6 +51,9 @@ interface PageState {
   buildings: NativeOption[];
   roomTypes: NativeOption[];
   windowOpts: WindowOptions;
+  /** Set when a list is STILL empty after discovery + a nudge (defect C). */
+  buildingDiag?: Diagnostics;
+  roomTypeDiag?: Diagnostics;
 }
 
 /**
@@ -61,8 +68,38 @@ interface PageState {
  * placeholders, so reading the DOM directly is both correct and bridge-agnostic
  * (it works whether or not panel.js wired the native cascade).
  */
+/** Build a Diagnostics record straight from the (empty) documented control. */
+function diagForEmpty(id: string): Diagnostics {
+  const el = document.getElementById(id) as HTMLSelectElement | null;
+  return {
+    id,
+    tag: el ? el.tagName : 'none',
+    count: el && el.options ? el.options.length : 0,
+    sampleTexts: el
+      ? Array.from(el.options)
+          .slice(0, 4)
+          .map((o) => (o.textContent || '').trim())
+      : [],
+    source: 'none',
+  };
+}
+
+/**
+ * Read the live option lists via robust, multi-source discovery (defect C).
+ * Pure read — it never dispatches events (the bounded nudge lives in an effect
+ * so the poll loop cannot fire `change` every tick). When a list is empty, a
+ * diagnostics record is attached so the UI can self-report.
+ */
 function readPageState(): PageState {
-  return { buildings: readBuildings(), roomTypes: readRoomTypes(), windowOpts: readWindowOptions() };
+  const bld = discoverOptions(CONTROL_IDS.building, ['building']);
+  const typ = discoverOptions(CONTROL_IDS.resourceType, ['resourcetype', 'resource', 'type']);
+  return {
+    buildings: bld.options,
+    roomTypes: typ.options,
+    windowOpts: readWindowOptions(),
+    buildingDiag: bld.options.length === 0 ? diagForEmpty(CONTROL_IDS.building) : undefined,
+    roomTypeDiag: typ.options.length === 0 ? diagForEmpty(CONTROL_IDS.resourceType) : undefined,
+  };
 }
 
 export interface TopBarProps {
@@ -93,7 +130,7 @@ export function TopBar({ onForm, onForceReload, statusLine, searchRef }: TopBarP
 
   // Live native page state, refreshed whenever the native cascade moves.
   const [page, setPage] = React.useState<PageState>(() => readPageState());
-  const { buildings, roomTypes, windowOpts } = page;
+  const { buildings, roomTypes, windowOpts, buildingDiag, roomTypeDiag } = page;
 
   const [state, setState] = React.useState<TopBarState>(() => {
     const init = readPageState();
@@ -194,9 +231,31 @@ export function TopBar({ onForm, onForceReload, statusLine, searchRef }: TopBarP
     const POLL_MS = 150;
     const BUDGET_MS = 3000;
     let elapsed = 0;
+
+    // Defect C: a BOUNDED nudge. If a list reads empty, dispatch a real change
+    // on the native control so a cascade-driven app fills it — but only a few
+    // times, so the poll can never fire `change` on every tick (which would
+    // loop with our own change listener). Diagnostics are logged once when a
+    // list is still empty after the budget.
+    const MAX_NUDGES = 3;
+    let buildingNudges = 0;
+    let typeNudges = 0;
+    let diagLogged = false;
+
     const timer = setInterval(() => {
       if (cancelled) return;
       elapsed += POLL_MS;
+
+      const snap = readPageState();
+      if (snap.buildings.length === 0 && buildingNudges < MAX_NUDGES) {
+        buildingNudges += 1;
+        nudgeNativeControl(CONTROL_IDS.building);
+      }
+      if (snap.roomTypes.length === 0 && typeNudges < MAX_NUDGES) {
+        typeNudges += 1;
+        nudgeNativeControl(CONTROL_IDS.resourceType);
+      }
+
       const sig = signature();
       if (sig !== lastSig) {
         lastSig = sig;
@@ -207,7 +266,17 @@ export function TopBar({ onForm, onForceReload, statusLine, searchRef }: TopBarP
       }
       // Stop once the lists have been stable for a few ticks or the budget ran
       // out, so the poll never runs indefinitely.
-      if (elapsed >= BUDGET_MS || stableTicks >= 4) clearInterval(timer);
+      if (elapsed >= BUDGET_MS || stableTicks >= 4) {
+        clearInterval(timer);
+        // Self-report once if a list is STILL empty after everything.
+        if (!diagLogged) {
+          diagLogged = true;
+          const final = readPageState();
+          if (final.buildingDiag) logDiagnostics('building', final.buildingDiag);
+          if (final.roomTypeDiag) logDiagnostics('resourceType', final.roomTypeDiag);
+          refresh();
+        }
+      }
     }, POLL_MS);
 
     return () => {
@@ -343,6 +412,20 @@ export function TopBar({ onForm, onForceReload, statusLine, searchRef }: TopBarP
               data-testid="nova-search"
             />
           </Field>
+
+          {/* Defect C: compact, muted, one-line diagnostics — only when a list
+              is STILL empty after discovery + a nudge. A single screenshot of
+              this identifies the real source on the live page. */}
+          {(buildingDiag || roomTypeDiag) && (
+            <div
+              data-testid="nova-filter-diag"
+              className="basis-full text-[10px] leading-tight text-muted-foreground/80 nova-mono"
+              role="note"
+            >
+              {buildingDiag && <DiagLine label="building" d={buildingDiag} />}
+              {roomTypeDiag && <DiagLine label="type" d={roomTypeDiag} />}
+            </div>
+          )}
         </div>
 
         {/* RIGHT GROUP — the query + its one primary action */}
@@ -443,6 +526,16 @@ export function TopBar({ onForm, onForceReload, statusLine, searchRef }: TopBarP
         <span aria-hidden>·</span>
         {statusLine}
       </div>
+    </div>
+  );
+}
+
+/** One compact diagnostics row (defect C self-report). */
+function DiagLine({ label, d }: { label: string; d: Diagnostics }) {
+  return (
+    <div data-testid={`nova-filter-diag-${label}`}>
+      {label}: tried #{d.id} ({d.tag}), {d.count} option{d.count === 1 ? '' : 's'}
+      {d.sampleTexts.length ? ` — ${d.sampleTexts.join(', ')}` : ' — none found'}
     </div>
   );
 }

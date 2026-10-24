@@ -22,11 +22,10 @@ import { TopBar } from '@/components/TopBar';
 import { applyClick, removeRange } from '@/lib/selection';
 import {
   DAY_WINDOW,
-  harvestRoomImages,
-  imgPathToDataUri,
   keyToAction,
   type BoardForm,
 } from '@/lib/native-bridge';
+import { harvestAndCache, loadCache, loadRoomPhotos, pathsToDataUris } from '@/lib/room-images';
 import { useBoard } from '@/lib/useBoard';
 
 function statusSentence(s: {
@@ -68,21 +67,58 @@ export function SearchView({ onRevealNative }: { onRevealNative: () => void }) {
   const model = useBoard(form);
   const { rows, axis, status } = model;
 
-  // Room photos harvested from the hidden native result cards (rsrcId -> URI).
+  // Room photos: cache-first, then the live DOM harvest (defect B). The cache
+  // lives in chrome.storage.local under one key; every render harvests any
+  // native cards present and merges them in, so the map only grows and warm
+  // reloads paint photos immediately with no action.
   const [imageMap, setImageMap] = React.useState<Record<string, string>>({});
+  const [loadingPhotos, setLoadingPhotos] = React.useState(false);
   const roomsKey = React.useMemo(() => rows.map((r) => r.room.id).join(','), [rows]);
+
+  // Seed from the persisted cache on mount so a warm cache renders instantly.
   React.useEffect(() => {
+    let cancelled = false;
+    loadCache().then((paths) => {
+      if (!cancelled) setImageMap((prev) => ({ ...pathsToDataUris(paths), ...prev }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Harvest + cache on every render pass (cheap) and whenever the rooms change.
+  React.useEffect(() => {
+    let cancelled = false;
     const harvest = () => {
-      const raw = harvestRoomImages();
-      const next: Record<string, string> = {};
-      for (const id of Object.keys(raw)) next[id] = imgPathToDataUri(raw[id]);
-      setImageMap(next);
+      harvestAndCache().then((merged) => {
+        if (!cancelled) setImageMap((prev) => ({ ...prev, ...merged }));
+      });
     };
     harvest();
     const t = setTimeout(harvest, 300);
-    return () => clearTimeout(t);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomsKey, status.done]);
+
+  // Which visible rows still have no image? The "Load room photos" action is
+  // shown only while at least one does, and removes itself once every row has
+  // an image.
+  const missingPhotos = React.useMemo(
+    () => rows.some((r) => !imageMap[r.room.id]),
+    [rows, imageMap]
+  );
+  const showLoadPhotos = rows.length > 0 && missingPhotos;
+
+  const onLoadPhotos = React.useCallback(() => {
+    if (loadingPhotos) return;
+    setLoadingPhotos(true);
+    loadRoomPhotos()
+      .then((merged) => setImageMap((prev) => ({ ...prev, ...merged })))
+      .finally(() => setLoadingPhotos(false));
+  }, [loadingPhotos]);
 
   // Auto-reveal the native UI after repeated room-list failures, so a broken
   // board never traps the user. We count only settled loads (status.done).
@@ -197,6 +233,9 @@ export function SearchView({ onRevealNative }: { onRevealNative: () => void }) {
           onCellClick={onCellClick}
           registerRowRef={model.observeRow}
           onRevealNative={onRevealNative}
+          showLoadPhotos={showLoadPhotos}
+          loadingPhotos={loadingPhotos}
+          onLoadPhotos={onLoadPhotos}
         />
       </div>
       <SelectionDrawer

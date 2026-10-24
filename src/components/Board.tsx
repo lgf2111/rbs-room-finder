@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { RoomThumbnail } from '@/components/RoomThumbnail';
 import { cn } from '@/lib/utils';
 import {
+  axisCells,
   axisGridTemplate,
   rangeHasConflict,
   rangeToWindow,
@@ -48,6 +49,11 @@ interface BoardProps {
   /** Reveal the untouched native page so the user can sign in again. Used by
    *  the 'Session expired' state's Sign in action. */
   onRevealNative: () => void;
+  /** Defect B: show the unobtrusive "Load room photos" control in the legend
+   *  while at least one visible row still has no image. */
+  showLoadPhotos?: boolean;
+  loadingPhotos?: boolean;
+  onLoadPhotos?: () => void;
 }
 
 /** The sticky header: one room-label cell + one cell per axis label (N+1). The
@@ -56,6 +62,10 @@ interface BoardProps {
  *  and the grid tracks are reserved up front, so no layout shift occurs when
  *  slot data streams in. */
 function AxisHeader({ axis, template }: { axis: string[]; template: string }) {
+  // Shared classification: BOTH the header and the rows consume axisCells, so a
+  // header cell and the data cell beneath it always agree on their divider
+  // weight. The STRONG divider sits on the block-END (:30) cell.
+  const cells = axisCells(axis);
   return (
     <div
       data-testid="nova-board-header"
@@ -74,25 +84,26 @@ function AxisHeader({ axis, template }: { axis: string[]; template: string }) {
         Room
       </div>
       {/* Tracks 1..N: one header cell per axis label, aligned to the row cells.
-          Every half-hour tick carries its monospace time label. */}
-      {axis.map((label, i) => {
-        const isHour = /:00$/.test(label);
-        return (
-          <div
-            key={label}
-            role="columnheader"
-            data-testid="nova-header-cell"
-            data-col={String(i)}
-            className={cn(
-              'nova-mono flex items-center justify-center overflow-hidden',
-              isHour ? 'border-r border-muted-foreground/40 text-foreground' : 'text-muted-foreground/60'
-            )}
-            style={{ height: 'var(--nova-header-h)' }}
-          >
-            {label}
-          </div>
-        );
-      })}
+          Every half-hour tick carries its monospace time label. The thick
+          divider lands on the :30 (block-end) cell; the :00 start gets only the
+          thin inner split — same rule as the data rows below. */}
+      {cells.map((c, i) => (
+        <div
+          key={c.label}
+          role="columnheader"
+          data-testid="nova-header-cell"
+          data-col={String(i)}
+          data-label={c.label}
+          className={cn(
+            'nova-header-cell nova-mono flex items-center justify-center overflow-hidden',
+            c.blockEnd && 'nova-header-cell--blockend',
+            c.isHourStart ? 'text-foreground' : 'text-muted-foreground/60'
+          )}
+          style={{ height: 'var(--nova-header-h)' }}
+        >
+          {c.label}
+        </div>
+      ))}
     </div>
   );
 }
@@ -137,6 +148,7 @@ const SlotCell = React.memo(function SlotCell({
   outside,
   selected,
   skeleton,
+  blockEnd,
   onClick,
 }: {
   slot: Slot | null;
@@ -146,9 +158,12 @@ const SlotCell = React.memo(function SlotCell({
   outside: boolean;
   selected: boolean;
   skeleton: boolean;
+  /** End of an hour block (the :30 cell): carries the STRONG divider so hour
+   *  blocks read as 07:00|07:30 ‖ 08:00|08:30. Supplied from the shared
+   *  axisCells classification so the header and this cell always agree. */
+  blockEnd: boolean;
   onClick: (e: React.MouseEvent) => void;
 }) {
-  const isHour = /:30$/.test(label); // the cell before the next hour marks a boundary
   const word = stateWord(skeleton, slot);
   let stateClass = 'nova-cell--unknown';
   if (skeleton) stateClass = 'nova-cell--skeleton';
@@ -193,7 +208,7 @@ const SlotCell = React.memo(function SlotCell({
       className={cn(
         'nova-cell',
         stateClass,
-        isHour && 'nova-cell--hour',
+        blockEnd && 'nova-cell--hour',
         outside && 'nova-cell--outside',
         selected && 'nova-cell--sel'
       )}
@@ -235,6 +250,8 @@ function Row({
   const cells = row.state.kind === 'loaded' ? row.state.cells : null;
   const skeleton = row.state.kind === 'skeleton';
   const roomCode = row.room.serial || row.room.name;
+  // Same shared classification the header uses, so divider weights line up.
+  const axisMeta = React.useMemo(() => axisCells(axis), [axis]);
 
   return (
     <div
@@ -258,7 +275,8 @@ function Row({
           </Button>
         </div>
       ) : (
-        axis.map((label, i) => {
+        axisMeta.map((meta, i) => {
+          const label = meta.label;
           const mins = timeToMinutes(label);
           const outside = mins < windowStart || mins >= windowEnd;
           const selected = findRangeAt(selection, row.room.id, i) !== -1;
@@ -273,6 +291,7 @@ function Row({
               outside={outside}
               selected={selected}
               skeleton={skeleton}
+              blockEnd={meta.blockEnd}
               onClick={(e) => onCellClick(row.room.id, i, e)}
             />
           );
@@ -291,6 +310,9 @@ export function Board({
   onCellClick,
   registerRowRef,
   onRevealNative,
+  showLoadPhotos,
+  loadingPhotos,
+  onLoadPhotos,
 }: BoardProps) {
   const { axis, rows } = model;
   const template = React.useMemo(() => axisGridTemplate(axis), [axis]);
@@ -383,7 +405,11 @@ export function Board({
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <Legend />
+      <Legend
+        showLoadPhotos={showLoadPhotos}
+        loadingPhotos={loadingPhotos}
+        onLoadPhotos={onLoadPhotos}
+      />
       <div
         data-testid="nova-board"
         role="grid"
@@ -419,7 +445,15 @@ export function Board({
 /** The board legend: names all three slot states + the selection outline, each
  *  with a swatch that matches the cell fill (luminance + pattern), so it reads
  *  for colour-blind users too. */
-function Legend() {
+function Legend({
+  showLoadPhotos,
+  loadingPhotos,
+  onLoadPhotos,
+}: {
+  showLoadPhotos?: boolean;
+  loadingPhotos?: boolean;
+  onLoadPhotos?: () => void;
+}) {
   return (
     <div
       data-testid="nova-legend"
@@ -442,6 +476,23 @@ function Legend() {
         />{' '}
         Selected
       </span>
+
+      {/* Defect B: one unobtrusive control to populate missing room photos. It
+          runs the native search once, harvests the fresh cards into the cache,
+          and removes itself once every visible row has an image. */}
+      {showLoadPhotos ? (
+        <Button
+          size="sm"
+          variant="outline"
+          className="ml-auto h-6 text-[11px]"
+          onClick={onLoadPhotos}
+          disabled={loadingPhotos}
+          data-testid="nova-load-photos"
+          aria-busy={loadingPhotos || undefined}
+        >
+          {loadingPhotos ? 'Loading room photos…' : 'Load room photos'}
+        </Button>
+      ) : null}
     </div>
   );
 }

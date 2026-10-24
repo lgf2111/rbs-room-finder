@@ -146,13 +146,30 @@
      a double-thick 2px one. */
   border-top: 1px solid var(--nova-hour-border);
   border-bottom: 1px solid var(--nova-hour-border);
+  /* Thin inner split between the two halves of an hour block (the :00 cell). */
   border-right: 1px solid var(--rbs-border-hex);
   box-sizing: border-box;
   cursor: pointer;
   position: relative;
   outline: none;
 }
+/*
+ * Defect A: the STRONG hour divider belongs at the END of each hour block — the
+ * :30 cell — so blocks read as 07:00|07:30 ‖ 08:00|08:30, not split mid-hour.
+ * A thicker (2px) right border in the hour-divider tone is applied to the
+ * block-end cell in BOTH the data rows (.nova-cell--hour) and the header
+ * (.nova-header-cell--blockend), driven by the shared axisCells classification,
+ * so a header cell and the cell beneath it always carry the same weight.
+ */
 .nova-cell--hour {
+  border-right-width: 2px;
+  border-right-color: var(--rbs-muted, #8b9199);
+}
+.nova-header-cell {
+  border-right: 1px solid var(--rbs-border-hex);
+}
+.nova-header-cell--blockend {
+  border-right-width: 2px;
   border-right-color: var(--rbs-muted, #8b9199);
 }
 .nova-cell--free {
