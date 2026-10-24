@@ -15,8 +15,22 @@ import { handoffToNative, type Room } from '@/lib/native-bridge';
 
 export interface DrawerModel {
   room: Room | null;
+  date: string;
   window: { start: string; end: string; count: number };
   conflict: boolean;
+  freeCount: number;
+  bookedCount: number;
+  durationMinutes: number;
+}
+
+/** "90 min" / "1 h" / "1 h 30 min" — compact human duration. */
+function formatDuration(mins: number): string {
+  if (mins <= 0) return '0 min';
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h} h`;
+  return `${h} h ${m} min`;
 }
 
 export function SelectionDrawer({
@@ -82,22 +96,42 @@ export function SelectionDrawer({
         <div className="text-[11px] text-muted-foreground">Capacity: {room.capacity}</div>
       </div>
 
-      <div className="rounded-md border border-border p-3">
-        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Selected window</div>
+      {/* Range summary: date, from–to, duration. */}
+      <div className="rounded-md border border-border p-3" data-testid="nova-drawer-summary">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Selection</div>
+        {model.date && (
+          <div className="nova-mono text-[12px] text-foreground" data-testid="nova-drawer-date">
+            {model.date}
+          </div>
+        )}
         <div className="nova-mono text-sm text-foreground" data-testid="nova-drawer-window">
           {model.window.start} – {model.window.end}
         </div>
-        <div className="text-[11px] text-muted-foreground">{model.window.count} slot(s)</div>
+        <div className="text-[11px] text-muted-foreground">
+          {model.window.count} slot(s) · {formatDuration(model.durationMinutes)}
+        </div>
       </div>
 
-      {model.conflict && (
-        <div
-          className="rounded-md border border-destructive/50 bg-destructive/10 p-2 text-[11px] text-destructive"
-          data-testid="nova-drawer-conflict"
-        >
-          Selected range contains booked slots.
-        </div>
-      )}
+      {/* Free / Booked confirmation for the selected range. */}
+      <div
+        className={cn(
+          'rounded-md border p-2 text-[11px]',
+          model.conflict
+            ? 'border-destructive/50 bg-destructive/10 text-destructive'
+            : 'border-border bg-secondary text-muted-foreground'
+        )}
+        data-testid="nova-drawer-confirm"
+      >
+        {model.conflict ? (
+          <span data-testid="nova-drawer-conflict">
+            {model.bookedCount} booked · {model.freeCount} free in range — contains booked slots.
+          </span>
+        ) : (
+          <span data-testid="nova-drawer-allfree">
+            All {model.freeCount} slot(s) free — no conflicts.
+          </span>
+        )}
+      </div>
 
       <div className="mt-auto flex flex-col gap-2">
         <Button onClick={onBook} disabled={busy} data-testid="nova-book-btn">

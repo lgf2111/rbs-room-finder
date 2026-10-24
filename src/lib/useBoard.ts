@@ -22,6 +22,7 @@ import {
   buildSlotAxis,
   createSlotQueue,
   DAY_WINDOW,
+  ENDPOINTS,
   fetchRooms,
   fetchSlots,
   slotCacheKey,
@@ -56,10 +57,14 @@ export interface BoardModel {
   axis: string[];
   rows: BoardRow[];
   status: BoardStatus;
+  /** The JSON endpoints, surfaced so the error state can name the failing one. */
+  endpoints: { searchList: string; slotList: string };
   /** Register a row element for viewport prioritisation. Returns an unobserver. */
   observeRow: (roomId: string, el: HTMLElement | null) => void;
   /** Retry one failed room (re-enqueues it at the front). */
   retryRoom: (roomId: string) => void;
+  /** Reload the whole board (used by the board-level error Retry). */
+  reload: () => void;
 }
 
 /** Stable key for a form so a new load is only triggered on a real change. */
@@ -103,7 +108,8 @@ export function useBoard(form: BoardForm): BoardModel {
   const ioRef = React.useRef<IntersectionObserver | null>(null);
   const rowEls = React.useRef<Map<string, HTMLElement>>(new Map());
   const startRef = React.useRef<number>(0);
-  const key = formKey(form);
+  const [reloadNonce, setReloadNonce] = React.useState(0);
+  const key = formKey(form) + '|' + reloadNonce;
 
   // Paint one room's cells (fresh generation only; the queue already dropped
   // stale responses before calling onLoaded).
@@ -291,7 +297,9 @@ export function useBoard(form: BoardForm): BoardModel {
     [rows, form.date]
   );
 
-  return { axis, rows, status, observeRow, retryRoom };
+  const reload = React.useCallback(() => setReloadNonce((n) => n + 1), []);
+
+  return { axis, rows, status, endpoints: ENDPOINTS, observeRow, retryRoom, reload };
 }
 
 function isInViewport(el: HTMLElement): boolean {

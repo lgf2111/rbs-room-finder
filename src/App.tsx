@@ -18,10 +18,35 @@ import {
   DAY_WINDOW,
   hideNativeUI,
   keyToAction,
-  queueStatus,
   revealNativeUI,
   type BoardForm,
 } from '@/lib/native-bridge';
+
+/**
+ * Build the status line as a human sentence:
+ *   "6 rooms · 144 free slots · loading 3/6"      (while filling)
+ *   "6 rooms · 144 free slots"                     (done, no failures)
+ *   "6 rooms · 140 free slots · 1 failed"          (done, with failures)
+ *   "0 rooms"                                      (empty)
+ * An explicit error is appended when the room-list fetch failed.
+ */
+function statusSentence(s: {
+  total: number;
+  loaded: number;
+  failed: number;
+  freeSlots: number;
+  done: boolean;
+  error?: string;
+}): string {
+  if (s.error) return s.error;
+  if (s.total === 0) return s.done ? 'No rooms' : 'Loading rooms…';
+  const parts: string[] = [];
+  parts.push(`${s.total} ${s.total === 1 ? 'room' : 'rooms'}`);
+  parts.push(`${s.freeSlots} free ${s.freeSlots === 1 ? 'slot' : 'slots'}`);
+  if (!s.done) parts.push(`loading ${s.loaded}/${s.total}`);
+  else if (s.failed > 0) parts.push(`${s.failed} failed`);
+  return parts.join(' · ');
+}
 import { useBoard } from '@/lib/useBoard';
 
 const INITIAL_FORM: BoardForm = {
@@ -117,19 +142,30 @@ export function App() {
 
   const drawer: DrawerModel | null = React.useMemo(() => {
     if (!selection) return null;
-    return selectionSummary(axis, rows, selection);
-  }, [selection, axis, rows]);
+    return selectionSummary(axis, rows, selection, form.date);
+  }, [selection, axis, rows, form.date]);
+
+  // Count free slots across the rooms whose slots have loaded, so the status
+  // line can read like a sentence ("6 rooms · 144 free slots · loading 3/6").
+  const freeSlots = React.useMemo(() => {
+    let n = 0;
+    for (const r of rows) {
+      if (r.state.kind !== 'loaded') continue;
+      for (const c of r.state.cells) if (c && c.state === 'free') n++;
+    }
+    return n;
+  }, [rows]);
 
   const statusLine = (
-    <span data-testid="nova-status-counts" className="nova-mono">
-      {queueStatus({
-        loaded: status.loaded,
+    <span data-testid="nova-status-counts">
+      {statusSentence({
         total: status.total,
-        inFlight: status.inFlight,
+        loaded: status.loaded,
         failed: status.failed,
+        freeSlots,
+        done: status.done,
+        error: status.error,
       })}
-      {status.failed > 0 ? '' : ''} · {(status.elapsedMs / 1000).toFixed(1)}s
-      {status.error ? ` · ${status.error}` : ''}
     </span>
   );
 

@@ -187,132 +187,152 @@ export function TopBar({ onForm, statusLine, onRevealNative, searchRef }: TopBar
       data-testid="nova-topbar"
       className="flex flex-col gap-2 border-b border-border bg-card px-3 py-2"
     >
-      <div className="flex flex-wrap items-center gap-2">
-        {/* Building */}
-        <Field label="Building">
-          <Select
-            value={state.building}
-            onValueChange={(v) => drive({ building: v === ALL_BUILDINGS ? ALL_BUILDINGS : v })}
+      {/* Control row: FILTERS on the left (building · type · capacity · find),
+          the QUERY on the right (window · sort · Native UI · Search). Every
+          control sits on the same 32px baseline via `items-end` + h-control. */}
+      <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
+        {/* LEFT GROUP — what to show */}
+        <div
+          className="flex flex-wrap items-end gap-2"
+          data-testid="nova-group-filters"
+          role="group"
+          aria-label="Filters"
+        >
+          <Field label="Building">
+            <Select
+              value={state.building}
+              onValueChange={(v) => drive({ building: v === ALL_BUILDINGS ? ALL_BUILDINGS : v })}
+            >
+              <SelectTrigger className="h-control w-[150px]" data-testid="nova-building">
+                <SelectValue placeholder="Building" />
+              </SelectTrigger>
+              <SelectContent>
+                {buildings.map((b) => (
+                  <SelectItem key={b.value || b.text} value={b.value || ALL_BUILDINGS}>
+                    {b.text}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+
+          <Field label="Type">
+            <Select value={state.roomType} onValueChange={(v) => drive({ roomType: v })}>
+              <SelectTrigger className="h-control w-[160px]" data-testid="nova-roomtype">
+                <SelectValue placeholder="All rooms" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_ROOMS}>All rooms</SelectItem>
+                {roomTypes.map((t) => (
+                  <SelectItem key={t.value || t.text} value={t.value || t.text}>
+                    {t.text}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+
+          <Field label="Min cap">
+            <Input
+              type="number"
+              min={0}
+              value={state.capacity}
+              onChange={(e) => drive({ capacity: e.target.value })}
+              className="h-control w-[72px] nova-mono"
+              data-testid="nova-capacity"
+            />
+          </Field>
+
+          <Field label="Find">
+            <Input
+              ref={searchRef}
+              type="text"
+              placeholder="room name"
+              value={state.search}
+              onChange={(e) => drive({ search: e.target.value })}
+              className="h-control w-[150px]"
+              data-testid="nova-search"
+            />
+          </Field>
+        </div>
+
+        {/* RIGHT GROUP — the query + its one primary action */}
+        <div
+          className="ml-auto flex flex-wrap items-end gap-2"
+          data-testid="nova-group-query"
+          role="group"
+          aria-label="Query"
+        >
+          <Field label="Window">
+            <div className="flex h-control items-center gap-1">
+              <Select value={state.windowStart} onValueChange={(v) => drive({ windowStart: v })}>
+                <SelectTrigger className="h-control w-[88px] nova-mono" data-testid="nova-window-start">
+                  <SelectValue placeholder="start" />
+                </SelectTrigger>
+                <SelectContent>
+                  {windowOpts.from.map((t) => (
+                    <SelectItem key={t} value={t} className="nova-mono">
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-muted-foreground">–</span>
+              <Select value={state.windowEnd} onValueChange={(v) => drive({ windowEnd: v })}>
+                <SelectTrigger className="h-control w-[88px] nova-mono" data-testid="nova-window-end">
+                  <SelectValue placeholder="end" />
+                </SelectTrigger>
+                <SelectContent>
+                  {windowOpts.to.map((t) => (
+                    <SelectItem key={t} value={t} className="nova-mono">
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </Field>
+
+          <Field label="Sort">
+            <Select value={state.sort} onValueChange={(v) => drive({ sort: v })}>
+              <SelectTrigger className="h-control w-[150px]" data-testid="nova-sort">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="name">Room name</SelectItem>
+                <SelectItem value="capacity">Capacity (desc)</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+
+          {/* Native UI is a utility, NOT the primary action → secondary. */}
+          <Button
+            variant="secondary"
+            className="h-control"
+            onClick={onRevealNative}
+            data-testid="nova-native-btn"
           >
-            <SelectTrigger className="w-[150px]" data-testid="nova-building">
-              <SelectValue placeholder="Building" />
-            </SelectTrigger>
-            <SelectContent>
-              {buildings.map((b) => (
-                <SelectItem key={b.value || b.text} value={b.value || ALL_BUILDINGS}>
-                  {b.text}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-
-        {/* Room type */}
-        <Field label="Type">
-          <Select value={state.roomType} onValueChange={(v) => drive({ roomType: v })}>
-            <SelectTrigger className="w-[160px]" data-testid="nova-roomtype">
-              <SelectValue placeholder="All rooms" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_ROOMS}>All rooms</SelectItem>
-              {roomTypes.map((t) => (
-                <SelectItem key={t.value || t.text} value={t.value || t.text}>
-                  {t.text}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-
-        {/* Capacity */}
-        <Field label="Min cap">
-          <Input
-            type="number"
-            min={0}
-            value={state.capacity}
-            onChange={(e) => drive({ capacity: e.target.value })}
-            className="w-[72px] nova-mono"
-            data-testid="nova-capacity"
-          />
-        </Field>
-
-        {/* Free-text search */}
-        <Field label="Find">
-          <Input
-            ref={searchRef}
-            type="text"
-            placeholder="room name"
-            value={state.search}
-            onChange={(e) => drive({ search: e.target.value })}
-            className="w-[160px]"
-            data-testid="nova-search"
-          />
-        </Field>
-
-        {/* Window start / end */}
-        <Field label="Window">
-          <div className="flex items-center gap-1">
-            <Select value={state.windowStart} onValueChange={(v) => drive({ windowStart: v })}>
-              <SelectTrigger className="w-[88px] nova-mono" data-testid="nova-window-start">
-                <SelectValue placeholder="start" />
-              </SelectTrigger>
-              <SelectContent>
-                {windowOpts.from.map((t) => (
-                  <SelectItem key={t} value={t} className="nova-mono">
-                    {t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span className="text-muted-foreground">–</span>
-            <Select value={state.windowEnd} onValueChange={(v) => drive({ windowEnd: v })}>
-              <SelectTrigger className="w-[88px] nova-mono" data-testid="nova-window-end">
-                <SelectValue placeholder="end" />
-              </SelectTrigger>
-              <SelectContent>
-                {windowOpts.to.map((t) => (
-                  <SelectItem key={t} value={t} className="nova-mono">
-                    {t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </Field>
-
-        {/* Sort */}
-        <Field label="Sort">
-          <Select value={state.sort} onValueChange={(v) => drive({ sort: v })}>
-            <SelectTrigger className="w-[150px]" data-testid="nova-sort">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="name">Room name</SelectItem>
-              <SelectItem value="capacity">Capacity (desc)</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-
-        <div className="ml-auto flex items-center gap-2">
-          <Button variant="secondary" onClick={onRevealNative} data-testid="nova-native-btn">
             Native UI
           </Button>
-          <Button onClick={onSearch} data-testid="nova-search-btn">
+          {/* The ONE primary (accent) action. */}
+          <Button className="h-control" onClick={onSearch} data-testid="nova-search-btn">
             <Search className="h-3.5 w-3.5" />
-            Refresh
+            Search
           </Button>
         </div>
       </div>
 
-      {/* Date chips */}
+      {/* Date strip (14-day). Today is preselected; the chosen chip uses the
+          accent sparingly — only the selected date, not every chip. */}
       <div className="flex flex-wrap items-center gap-1" data-testid="nova-datechips">
         {dateChips.map((chip, i) => (
           <button
             key={chip.label}
             type="button"
+            aria-pressed={i === state.dateIndex}
             onClick={() => drive({ dateIndex: i })}
             className={cn(
-              'flex h-control min-w-[44px] flex-col items-center justify-center rounded-md border px-2 text-[11px] leading-tight transition-colors',
+              'flex h-control min-w-[44px] flex-col items-center justify-center rounded-md border px-2 text-[11px] leading-tight transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
               i === state.dateIndex
                 ? 'border-primary bg-primary text-primary-foreground'
                 : 'border-border bg-secondary text-foreground hover:bg-accent'
@@ -328,15 +348,17 @@ export function TopBar({ onForm, statusLine, onRevealNative, searchRef }: TopBar
       <div
         data-testid="nova-statusbar"
         className="flex items-center gap-2 border-t border-border pt-1.5 text-[11px] text-muted-foreground"
+        role="status"
+        aria-live="polite"
       >
         <span className="nova-mono">{dateChips[state.dateIndex]?.label ?? '—'}</span>
-        <span>·</span>
+        <span aria-hidden>·</span>
         <span>{state.roomType === ALL_ROOMS ? 'All rooms' : state.roomType}</span>
-        <span>·</span>
+        <span aria-hidden>·</span>
         <span className="nova-mono">
           {state.windowStart}–{state.windowEnd}
         </span>
-        <span>·</span>
+        <span aria-hidden>·</span>
         {statusLine}
       </div>
     </div>

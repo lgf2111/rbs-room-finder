@@ -50,7 +50,10 @@
 
   --border: 218 11% 19%;             /* #2b2f36 border */
   --input: 218 11% 19%;
-  --ring: 350 85% 42%;               /* brand accent focus ring */
+  /* Focus ring: a bright cyan, not the brand red. The red accent is reserved
+     for the single primary action; a cyan ring stays visible on the dark
+     surface AND never reads as "this is the primary button". */
+  --ring: 190 95% 55%;
 
   --radius: 0.375rem;                /* 6px — tight, no blobs */
 
@@ -73,25 +76,60 @@
 }
 
 /*
- * Board cell states — colour-blind-safe palette (Okabe-Ito derived).
- *   free   : teal/green fill
- *   booked : orange, overlaid with a 45deg hatch so it reads without colour
- *   closed : neutral grey, flat, visually distinct from booked (no hatch, dim)
+ * Board cell states — colour-blind-safe palette (Okabe-Ito derived). Every
+ * state is distinguishable by BOTH luminance and pattern, so the board reads
+ * without relying on hue:
+ *   free   : dark teal/green, flat, LOW luminance
+ *   booked : brighter orange + a 45deg hatch (pattern, higher luminance)
+ *   closed : mid neutral grey, flat, dimmed — clearly "not booked", no hatch
+ *   unknown: near-black flat
  *   skeleton: shimmering placeholder painted before slots load
- * Row height is ~32px; the room column and times align to the shared axis.
+ * Row height is a fixed 32px baseline; the room column and every time label
+ * align to the shared axis.
  */
 .nova-root {
   --nova-row-h: 32px;
-  --nova-free: #0a7d63;        /* bluish green */
+  --nova-header-h: 32px;
+  --nova-roomcol-w: 200px;
+
+  --nova-free: #0a7d63;        /* bluish green, low luminance */
   --nova-free-fg: #d8f5ec;
-  --nova-booked: #c86a00;      /* vermilion/orange */
-  --nova-booked-hatch: rgba(0, 0, 0, 0.32);
+  --nova-booked: #d4771a;      /* vermilion/orange, higher luminance */
+  --nova-booked-hatch: rgba(0, 0, 0, 0.38);
   --nova-booked-fg: #ffe9d4;
-  --nova-closed: #3a3f47;      /* neutral grey, clearly not "booked" */
-  --nova-closed-fg: #8b9199;
+  --nova-closed: #4a4f57;      /* neutral grey, clearly not "booked" */
+  --nova-closed-fg: #aeb4bc;
+  --nova-closed-line: rgba(255, 255, 255, 0.10);
   --nova-unknown: #202327;
-  --nova-zebra: rgba(255, 255, 255, 0.025);
-  --nova-sel: #3b82f6;         /* blue selection ring */
+  --nova-zebra: rgba(255, 255, 255, 0.028);
+  --nova-hover: rgba(255, 255, 255, 0.07);
+  --nova-sel: #e6b800;         /* warm gold selection outline, fights neither
+                                  the green free nor the orange booked fills */
+}
+
+/*
+ * STICKY structure. The board scroll container is the positioning context.
+ * The header row sticks to the top; the room-label column (track 0 of both the
+ * header and every row) sticks to the left. Their intersection (the header's
+ * room cell) must out-rank both, so it carries the highest z-index.
+ */
+.nova-board-scroll {
+  position: relative;
+  overflow: auto;
+}
+.nova-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.nova-roomcol,
+.nova-header-roomcell {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+}
+.nova-header-roomcell {
+  z-index: 30; /* top-left corner wins over both sticky axes */
 }
 
 .nova-cell {
@@ -101,6 +139,7 @@
   box-sizing: border-box;
   cursor: pointer;
   position: relative;
+  outline: none;
 }
 .nova-cell--hour {
   border-right-color: var(--rbs-muted, #8b9199);
@@ -119,8 +158,17 @@
   );
 }
 .nova-cell--closed {
-  background: var(--nova-closed);
-  opacity: 0.8;
+  background-color: var(--nova-closed);
+  /* a faint cross-hatch so closed never reads as a flat "free"-like fill, yet
+     is plainly different from booked's bold diagonal hatch */
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--nova-closed-line) 0,
+    var(--nova-closed-line) 1px,
+    transparent 1px,
+    transparent 7px
+  );
+  opacity: 0.85;
   cursor: not-allowed;
 }
 .nova-cell--unknown {
@@ -129,8 +177,25 @@
 .nova-cell--outside {
   opacity: 0.4;
 }
+/* Hover + keyboard focus affordance on interactive cells (not skeleton). */
+.nova-cell--free:hover,
+.nova-cell--booked:hover,
+.nova-cell--closed:hover,
+.nova-cell--unknown:hover {
+  box-shadow: inset 0 0 0 9999px var(--nova-hover);
+}
+.nova-cell:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+  z-index: 5;
+}
 .nova-cell--sel {
   box-shadow: inset 0 0 0 2px var(--nova-sel);
+  z-index: 4;
+}
+/* Selection outline must still win when the cell is also hovered. */
+.nova-cell--sel:hover {
+  box-shadow: inset 0 0 0 2px var(--nova-sel), inset 0 0 0 9999px var(--nova-hover);
 }
 .nova-cell--skeleton {
   background: linear-gradient(
@@ -147,9 +212,21 @@
   0% { background-position: 100% 0; }
   100% { background-position: -100% 0; }
 }
+@media (prefers-reduced-motion: reduce) {
+  .nova-cell--skeleton { animation: none; }
+}
 
+/*
+ * Rows. Zebra is painted on the row and MUST survive hover: hover darkens via
+ * a cell-level overlay (above), so the row's own zebra tint stays underneath.
+ * The room-label column re-paints the same zebra/base so the sticky column is
+ * opaque as it scrolls over cells beneath it.
+ */
+.nova-row {
+  background: var(--rbs-page);
+}
 .nova-row--zebra {
-  background: var(--nova-zebra);
+  background: color-mix(in srgb, var(--rbs-page) 100%, #fff 2.8%);
 }
 .nova-roomcol {
   height: var(--nova-row-h);
@@ -161,4 +238,57 @@
   box-sizing: border-box;
   overflow: hidden;
   white-space: nowrap;
+  /* opaque background so cells never show through the sticky column */
+  background: var(--rbs-page);
+}
+.nova-row--zebra .nova-roomcol {
+  background: color-mix(in srgb, var(--rbs-page) 100%, #fff 2.8%);
+}
+.nova-roomcol--cursor,
+.nova-row--zebra .nova-roomcol--cursor {
+  background: hsl(var(--accent));
+}
+/* right-aligned numeric capacity, fixed width so the column scans cleanly */
+.nova-cap {
+  margin-left: auto;
+  text-align: right;
+  min-width: 2ch;
+  color: hsl(var(--foreground));
+}
+
+/* Legend swatches mirror the cell fills exactly. */
+.nova-legend-sw {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--rbs-border-hex);
+  vertical-align: -2px;
+}
+.nova-legend-sw--free { background: var(--nova-free); }
+.nova-legend-sw--booked {
+  background-color: var(--nova-booked);
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--nova-booked-hatch) 0,
+    var(--nova-booked-hatch) 2px,
+    transparent 2px,
+    transparent 6px
+  );
+}
+.nova-legend-sw--closed {
+  background-color: var(--nova-closed);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--nova-closed-line) 0,
+    var(--nova-closed-line) 1px,
+    transparent 1px,
+    transparent 7px
+  );
+}
+
+/* Keyboard focus must be visible on the dark surface everywhere, not just the
+   board. shadcn components already use ring-ring; make the fallback obvious. */
+.nova-root :focus-visible {
+  outline-color: hsl(var(--ring));
 }
