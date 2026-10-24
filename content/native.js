@@ -58,7 +58,9 @@ const RBS_ENDPOINTS = Object.freeze({
 const DEFAULT_WINDOW = Object.freeze({ start: '07:00', end: '22:30' });
 
 /** SLT_STATUS mapping, verified live: 1 = free, 3 = taken, else unknown. */
-const SLOT_STATUS = Object.freeze({ FREE: 1, TAKEN: 3 });
+// Live mapping: 1 = free, 3 = booked, 7 = unavailable for this user (quota /
+// permission / not bookable) - verified against the site. Everything else unknown.
+const SLOT_STATUS = Object.freeze({ FREE: 1, TAKEN: 3, UNAVAILABLE: 7 });
 
 const MONTHS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -262,6 +264,7 @@ function classifySlotStatus(status) {
   const n = Number(status);
   if (n === SLOT_STATUS.FREE) return 'free';
   if (n === SLOT_STATUS.TAKEN) return 'taken';
+  if (n === SLOT_STATUS.UNAVAILABLE) return 'taken';
   return 'unknown';
 }
 

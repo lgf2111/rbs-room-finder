@@ -1495,7 +1495,9 @@
       // Must be literal 'facilities': an empty faciequip makes the endpoint return [].
       facilities: 'facilities',
       status: 'All',
-      resourceType: form.roomType, // option TEXT; '' = all types
+      // The endpoint expects the option TEXT with spaces ("Discussion Room"); our
+      // sl-option values use underscores ("Discussion_Room") for DOM safety.
+      resourceType: form.roomType ? String(form.roomType).replace(/_/g, ' ') : '',
       date: form.date,
       start: form.window.start,
       end: form.window.end,
@@ -2338,7 +2340,18 @@
             // #resourceType too early yields only the placeholder, and an empty type
             // means "All rooms" = ~60 rooms at ~2.2 s per serialised slot call.
             const startInitialLoad = (attempt) => {
-              const currentType = ui.typeSelect.value;
+              let currentType = ui.typeSelect.value;
+              if (!currentType) {
+                // Selects used to be built with spaced values ("Discussion Room");
+                // they now carry underscored ones ("Discussion_Room"). Pick the first
+                // concrete type ourselves rather than trusting ui.typeSelect.value.
+                const concrete = Array.from(ui.typeSelect.querySelectorAll('sl-option'))
+                  .find(o => o.value && !/^Resource_?Type$/i.test(o.getAttribute('value') || ''));
+                if (concrete) {
+                  ui.typeSelect.value = concrete.getAttribute('value');
+                  currentType = ui.typeSelect.value;
+                }
+              }
               if (!currentType && attempt < 6) {
                 setTimeout(() => startInitialLoad(attempt + 1), 500);
                 return;
