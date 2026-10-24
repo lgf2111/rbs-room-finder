@@ -2334,8 +2334,22 @@
           const hasEnd = ui.endSelect.value && ui.endSelect.options.length > 0;
           
           if (hasBuilding || hasDate || (hasStart && hasEnd)) {
-            // Use a small delay to ensure UI is fully ready
-            setTimeout(() => requestReload('initial'), 100);
+            // Wait for a concrete room type to land before the first search: reading
+            // #resourceType too early yields only the placeholder, and an empty type
+            // means "All rooms" = ~60 rooms at ~2.2 s per serialised slot call.
+            const startInitialLoad = (attempt) => {
+              const currentType = ui.typeSelect.value;
+              if (!currentType && attempt < 6) {
+                setTimeout(() => startInitialLoad(attempt + 1), 500);
+                return;
+              }
+              if (!currentType) {
+                // Still nothing usable after ~3 s: fall back to the loaded state we have.
+                ui.typeSelect.value = '';
+              }
+              requestReload('initial');
+            };
+            setTimeout(() => startInitialLoad(0), 100);
           }
         }
       }).catch(err => {
