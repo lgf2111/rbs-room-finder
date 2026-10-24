@@ -645,6 +645,8 @@
           element.clearable = v;
         } else if (k === 'hoist' && useShoelace && tag.startsWith('sl-')) {
           element.hoist = v;
+        } else if (k === 'label' && useShoelace && tag.startsWith('sl-')) {
+          element.setAttribute('label', v);
         } else if (k === 'pill' && useShoelace && tag.startsWith('sl-')) {
           element.pill = v;
         } else if (k.startsWith('on') && typeof v === 'function') {
@@ -1039,7 +1041,8 @@
       ? createControl('sl-select', { 
           size: 'small', 
           hoist: true,
-          placeholder: 'Building…'
+          label: 'Building',
+          placeholder: 'All buildings'
         }, [
           createControl('sl-option', { value: '', text: 'All buildings' })
         ], 'select')
@@ -1053,7 +1056,8 @@
     const typeSelect = useShoelace
       ? createControl('sl-select', {
           size: 'small',
-          hoist: true
+          hoist: true,
+          label: 'Room type'
         }, [
           createControl('sl-option', { value: '', text: 'All rooms' }),
           ...roomTypes.map(t => createControl('sl-option', { value: t, text: t }))
@@ -1150,7 +1154,7 @@
     
     // Sort select - use sl-select
     const sortSelect = useShoelace
-      ? createControl('sl-select', { size: 'small' }, [
+      ? createControl('sl-select', { size: 'small', label: 'Sort' }, [
           createControl('sl-option', { value: 'name', text: 'Name' }),
           createControl('sl-option', { value: 'capacity', text: 'Capacity' })
         ], 'select')
@@ -2287,11 +2291,38 @@
         // After building select is populated and room types/window options are updated,
         // Apply default form (first concrete room type + native building)
         const nativeState = {
-          roomTypes: readRoomTypes(),
+          // readRoomTypes() also returns the native placeholder ("Resource Type");
+          // feeding that to defaultForm picks it as the first concrete type.
+          roomTypes: (function () {
+            const fromSelect = Array.from(ui.typeSelect.querySelectorAll('sl-option'))
+              .map(o => (o.textContent || '').trim())
+              .filter(t => t && !/^Resource Type$/i.test(t));
+            return fromSelect.length ? fromSelect : readRoomTypes();
+          })(),
           building: readIdValue(RBS_CONTROL_IDS.building),
           buildingName: readBuildingName()
         };
         const defaultFormValues = defaultForm(nativeState);
+        // Shoelace option values are DOM-safe (spaced values become underscores), so
+        // the option's value may be "Discussion_Room" where the default says
+        // "Discussion Room". Resolve by option text, then by normalised value.
+        const resolveValue = (control, wanted) => {
+          if (!control || !wanted) return null;
+          const norm = (v) => String(v).toLowerCase().replace(/[^a-z0-9]/g, '');
+          const opts = control.tagName === 'SL-SELECT'
+            ? Array.from(control.querySelectorAll('sl-option'))
+            : Array.from(control.options || []);
+          const byValue = opts.find(o => (o.value || o.getAttribute('value') || '') === wanted);
+          if (byValue) return byValue.value || byValue.getAttribute('value');
+          const byText = opts.find(o => (o.textContent || '').trim() === wanted);
+          if (byText) return byText.value || byText.getAttribute('value');
+          const byNorm = opts.find(o => norm(o.value || o.getAttribute('value') || '') === norm(wanted) || norm(o.textContent || '') === norm(wanted));
+          return byNorm ? (byNorm.value || byNorm.getAttribute('value')) : null;
+        };
+        const wantedType = resolveValue(ui.typeSelect, defaultFormValues.roomType);
+        if (wantedType) ui.typeSelect.value = wantedType;
+        const wantedBuilding = resolveValue(ui.buildingSelect, defaultFormValues.building);
+        if (wantedBuilding && !ui.buildingSelect.disabled) ui.buildingSelect.value = wantedBuilding;
         
         // Override room type with first concrete type
         if (defaultFormValues.roomType && ui.typeSelect) {
