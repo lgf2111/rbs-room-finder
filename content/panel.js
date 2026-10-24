@@ -12,7 +12,532 @@
 
   const SEARCH_PATH = '/SRB001/SRB001Page';
   const STORAGE_KEY = 'rbsLastBoard';
-  const PANEL_CSS = `:host{all:initial}:host{--rbs-page:#0b0c0e;--rbs-surface:#14161a;--rbs-surface2:#1f2226;--rbs-border:#2b2f36;--rbs-border-hour:#3a3f48;--rbs-primary-text:#e6e8eb;--rbs-muted:#8b9199;--rbs-accent:#c8102e;--rbs-free:#3fb950;--rbs-taken:#8b3a3a;--rbs-font:-apple-system,"Segoe UI",system-ui,sans-serif;--rbs-font-mono:ui-monospace,"SF Mono",Monaco,"Cascadia Mono",monospace;--rbs-shadow:0 4px 20px rgba(0,0,0,0.5);--rbs-gap:12px;--rbs-radius:8px;--rbs-cell-size:32px;--rbs-hour-height:40px;--rbs-row-height:32px;--rbs-topbar-height:64px;--rbs-status-height:24px}:host([data-theme="light"]){--rbs-page:#fff;--rbs-surface:#f8f9fa;--rbs-surface2:#e9ecef;--rbs-border:#dee2e6;--rbs-border-hour:#ced4da;--rbs-primary-text:#212529;--rbs-muted:#6c757d;--rbs-accent:#0d6efd;--rbs-free:#198754;--rbs-taken:#dc3545}*,*::before,*::after{box-sizing:border-box}.rbs-fullpage{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;background:var(--rbs-page);color:var(--rbs-primary-text);font-family:var(--rbs-font);font-size:13px;line-height:1.4;overflow:hidden}.rbs-topbar{height:var(--rbs-topbar-height);display:flex;align-items:center;padding:0 var(--rbs-gap);background:var(--rbs-surface);border-bottom:1px solid var(--rbs-border);gap:var(--rbs-gap);flex-shrink:0}.rbs-brand{display:flex;align-items:center;gap:6px;font-weight:600;color:var(--rbs-accent);margin-right:12px}.rbs-brand-text{font-size:14px}.rbs-brand-building{font-size:13px;color:var(--rbs-primary-text);margin-left:4px}.rbs-control-group{display:flex;align-items:center;gap:8px}.rbs-control-group select,.rbs-control-group input{background:var(--rbs-surface2);border:1px solid var(--rbs-border);color:var(--rbs-primary-text);border-radius:var(--rbs-radius);padding:6px 8px;font-size:12px;min-height:28px;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b9199' d='M2.5 4.5L6 8l3.5-3.5H2.5z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:28px}.rbs-control-group select:focus,.rbs-control-group input:focus{outline:2px solid var(--rbs-accent);outline-offset:0}.rbs-control-group select option{background:var(--rbs-surface2);color:var(--rbs-primary-text)}.rbs-capacity-input{width:80px}.rbs-search-input{width:120px}.rbs-date-chips{display:flex;gap:4px;overflow-x:auto;padding:2px;scrollbar-width:none}.rbs-date-chip{display:flex;flex-direction:column;align-items:center;padding:6px 8px;background:var(--rbs-surface2);border:1px solid var(--rbs-border);border-radius:var(--rbs-radius);min-width:70px;cursor:pointer;user-select:none}.rbs-date-chip:hover{background:var(--rbs-surface)}.rbs-date-chip.rbs-selected{background:var(--rbs-accent);color:white;border-color:var(--rbs-accent);font-weight:600;outline:2px solid var(--rbs-accent);outline-offset:-1px}.rbs-date-weekday{font-size:10px;font-weight:600;margin-bottom:2px}.rbs-date-label{font-size:11px}.rbs-window-controls{display:flex;align-items:center;gap:4px}.rbs-window-select{width:88px}.rbs-topbar-actions{margin-left:auto;display:flex;gap:8px}.rbs-action-btn{background:var(--rbs-surface2);border:1px solid var(--rbs-border);color:var(--rbs-primary-text);border-radius:var(--rbs-radius);padding:6px 12px;font-size:12px;cursor:pointer;min-height:28px;white-space:nowrap;min-width:60px}.rbs-action-btn:hover{background:var(--rbs-surface)}.rbs-action-btn.rbs-primary{background:var(--rbs-accent);color:white;border-color:var(--rbs-accent)}.rbs-action-btn.rbs-primary:hover{background:#d93046}.rbs-main{flex:1;display:flex;overflow:hidden;position:relative}.rbs-board-area{flex:1;display:flex;flex-direction:column;overflow:hidden}.rbs-board-header{height:var(--rbs-hour-height);background:var(--rbs-surface);border-bottom:1px solid var(--rbs-border);display:grid;align-items:center;position:sticky;top:0;z-index:10}.rbs-room-label{padding:0 12px;font-family:var(--rbs-font-mono);font-size:12px;color:var(--rbs-muted);border-right:1px solid var(--rbs-border)}.rbs-board-scroll{flex:1;overflow:auto;background-image:repeating-linear-gradient(to bottom,transparent 0 31px,var(--rbs-border) 31px 32px)}.rbs-board-rows{display:flex;flex-direction:column}.rbs-board-row{height:var(--rbs-row-height);display:grid;align-items:center;border-bottom:1px solid var(--rbs-border)}.rbs-room-info{display:flex;align-items:center;padding:0 12px;gap:8px;font-size:12px;border-right:1px solid var(--rbs-border)}.rbs-room-code{font-family:var(--rbs-font-mono);color:var(--rbs-primary-text)}.rbs-room-type{color:var(--rbs-muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}.rbs-room-cap{background:var(--rbs-surface2);color:var(--rbs-primary-text);border-radius:999px;padding:0 6px;font-size:10px;font-weight:600;margin-left:auto}.rbs-slot-cells{display:grid;gap:1px;height:100%;align-items:center}.rbs-slot-cell{height:100%;border-right:1px solid var(--rbs-border)}.rbs-slot-cell.rbs-hour-boundary{border-right-color:var(--rbs-border-hour)}.rbs-slot-cell.rbs-free{background:var(--rbs-free)}.rbs-slot-cell.rbs-taken{background:var(--rbs-taken)}.rbs-slot-cell.rbs-unknown{background:var(--rbs-surface2)}.rbs-slot-cell.rbs-outside{opacity:0.3}.rbs-slot-cell.rbs-selected{outline:2px solid var(--rbs-accent);outline-offset:-1px;z-index:1}.rbs-slot-cell.rbs-skel{background:linear-gradient(90deg,var(--rbs-surface2) 25%,var(--rbs-surface) 37%,var(--rbs-surface2) 63%);background-size:400% 100%;animation:rbs-shimmer 1.2s ease-in-out infinite}@keyframes rbs-shimmer{0%{background-position:100% 0}100%{background-position:0 0}}.rbs-statusbar{height:var(--rbs-status-height);background:var(--rbs-surface);border-top:1px solid var(--rbs-border);display:flex;align-items:center;justify-content:space-between;padding:0 12px;font-family:var(--rbs-font-mono);font-size:11px;color:var(--rbs-muted);flex-shrink:0;overflow:hidden;white-space:nowrap}.rbs-stats{display:flex;gap:12px}.rbs-error-indicator{color:#ff6b6b;display:flex;align-items:center;gap:4px}.rbs-retry-btn{background:none;border:none;color:var(--rbs-accent);cursor:pointer;text-decoration:underline;font-family:inherit;font-size:inherit;padding:0;margin:0}.rbs-legend{display:flex;align-items:center;gap:8px;margin-left:auto;margin-right:12px;font-size:11px;color:var(--rbs-muted)}.rbs-legend-dot{width:8px;height:8px;border-radius:50%}.rbs-legend-dot.rbs-free-dot{background-color:var(--rbs-free)}.rbs-legend-dot.rbs-taken-dot{background-color:var(--rbs-taken)}@media (max-width:1279px){.rbs-topbar{flex-wrap:wrap;height:auto;padding:8px}.rbs-date-chips{order:1;width:100%;margin-top:8px}}.rbs-fullpage.rbs-app-hidden{display:none!important}`;
+  const PANEL_CSS = `:host{all:initial}
+  
+  /* RBS theme variables */
+  :host {
+    --rbs-page: #0b0c0e;
+    --rbs-surface: #14161a;
+    --rbs-surface2: #1f2226;
+    --rbs-border: #2b2f36;
+    --rbs-border-hour: #3a3f48;
+    --rbs-primary-text: #e6e8eb;
+    --rbs-muted: #8b9199;
+    --rbs-accent: #c8102e; /* SIT red */
+    --rbs-free: #3fb950;
+    --rbs-taken: #8b3a3a;
+    --rbs-font: -apple-system, "Segoe UI", system-ui, sans-serif;
+    --rbs-font-mono: ui-monospace, "SF Mono", Monaco, "Cascadia Mono", monospace;
+    --rbs-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    --rbs-gap: 12px;
+    --rbs-radius: 8px;
+    --rbs-cell-size: 32px;
+    --rbs-hour-height: 40px;
+    --rbs-row-height: 32px;
+    --rbs-topbar-height: 64px;
+    --rbs-status-height: 24px;
+    
+    /* Shoelace theme mapping */
+    --sl-color-primary-50: #fef2f2;
+    --sl-color-primary-100: #fee2e2;
+    --sl-color-primary-200: #fecaca;
+    --sl-color-primary-300: #fca5a5;
+    --sl-color-primary-400: #f87171;
+    --sl-color-primary-500: #ef4444;
+    --sl-color-primary-600: var(--rbs-accent); /* #c8102e */
+    --sl-color-primary-700: #b91c1c;
+    --sl-color-primary-800: #991b1b;
+    --sl-color-primary-900: #7f1d1d;
+    --sl-color-primary-950: #450a0a;
+    
+    --sl-color-neutral-50: #f9fafb;
+    --sl-color-neutral-100: #f3f4f6;
+    --sl-color-neutral-200: #e5e7eb;
+    --sl-color-neutral-300: #d1d5db;
+    --sl-color-neutral-400: #9ca3af;
+    --sl-color-neutral-500: #6b7280;
+    --sl-color-neutral-600: #4b5563;
+    --sl-color-neutral-700: #374151;
+    --sl-color-neutral-800: #1f2937;
+    --sl-color-neutral-900: #111827;
+    --sl-color-neutral-950: #030712;
+    
+    --sl-color-neutral-0: var(--rbs-page);
+    --sl-color-neutral-1000: var(--rbs-primary-text);
+    
+    --sl-font-sans: var(--rbs-font);
+    --sl-font-mono: var(--rbs-font-mono);
+    --sl-border-radius-small: 4px;
+    --sl-border-radius-medium: var(--rbs-radius);
+    --sl-border-radius-large: 12px;
+    --sl-border-radius-x-large: 16px;
+    
+    --sl-input-height-small: 28px;
+    --sl-input-height-medium: 32px;
+    --sl-input-height-large: 40px;
+    
+    --sl-panel-background-color: var(--rbs-surface);
+    --sl-panel-border-color: var(--rbs-border);
+    
+    --sl-input-background-color: var(--rbs-surface2);
+    --sl-input-border-color: var(--rbs-border);
+    --sl-input-color: var(--rbs-primary-text);
+    --sl-input-placeholder-color: var(--rbs-muted);
+    
+    --sl-button-small-font-size: 12px;
+    --sl-button-font-size-small: 12px;
+    
+    --sl-focus-ring-color: var(--rbs-accent);
+    --sl-focus-ring-style: solid;
+    --sl-focus-ring-width: 2px;
+  }
+  
+  :host([data-theme="light"]) {
+    --rbs-page: #ffffff;
+    --rbs-surface: #f8f9fa;
+    --rbs-surface2: #e9ecef;
+    --rbs-border: #dee2e6;
+    --rbs-border-hour: #ced4da;
+    --rbs-primary-text: #212529;
+    --rbs-muted: #6c757d;
+    --rbs-accent: #0d6efd;
+    --rbs-free: #198754;
+    --rbs-taken: #dc3545;
+    
+    /* Light theme Shoelace overrides */
+    --sl-color-primary-600: var(--rbs-accent);
+    --sl-color-neutral-0: var(--rbs-page);
+    --sl-color-neutral-1000: var(--rbs-primary-text);
+    --sl-panel-background-color: var(--rbs-surface);
+    --sl-panel-border-color: var(--rbs-border);
+    --sl-input-background-color: var(--rbs-surface2);
+    --sl-input-border-color: var(--rbs-border);
+    --sl-input-color: var(--rbs-primary-text);
+    --sl-input-placeholder-color: var(--rbs-muted);
+  }
+  
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+  
+  .rbs-fullpage {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    display: flex;
+    flex-direction: column;
+    background: var(--rbs-page);
+    color: var(--rbs-primary-text);
+    font-family: var(--rbs-font);
+    font-size: 13px;
+    line-height: 1.4;
+    overflow: hidden;
+  }
+  
+  .rbs-topbar {
+    height: var(--rbs-topbar-height);
+    display: flex;
+    align-items: center;
+    padding: 0 var(--rbs-gap);
+    background: var(--rbs-surface);
+    border-bottom: 1px solid var(--rbs-border);
+    gap: var(--rbs-gap);
+    flex-shrink: 0;
+  }
+  
+  .rbs-brand {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    color: var(--rbs-accent);
+    margin-right: 12px;
+  }
+  
+  .rbs-brand-text {
+    font-size: 14px;
+  }
+  
+  .rbs-brand-building {
+    font-size: 13px;
+    color: var(--rbs-primary-text);
+    margin-left: 4px;
+  }
+  
+  .rbs-control-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .rbs-control-group select,
+  .rbs-control-group input {
+    background: var(--rbs-surface2);
+    border: 1px solid var(--rbs-border);
+    color: var(--rbs-primary-text);
+    border-radius: var(--rbs-radius);
+    padding: 6px 8px;
+    font-size: 12px;
+    min-height: 28px;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b9199' d='M2.5 4.5L6 8l3.5-3.5H2.5z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 28px;
+  }
+  
+  .rbs-control-group select:focus,
+  .rbs-control-group input:focus {
+    outline: 2px solid var(--rbs-accent);
+    outline-offset: 0;
+  }
+  
+  .rbs-control-group select option {
+    background: var(--rbs-surface2);
+    color: var(--rbs-primary-text);
+  }
+  
+  .rbs-capacity-input {
+    width: 80px;
+  }
+  
+  .rbs-search-input {
+    width: 120px;
+  }
+  
+  .rbs-date-chips {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    padding: 2px;
+    scrollbar-width: none;
+  }
+  
+  .rbs-date-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px 8px;
+    background: var(--rbs-surface2);
+    border: 1px solid var(--rbs-border);
+    border-radius: var(--rbs-radius);
+    min-width: 70px;
+    cursor: pointer;
+    user-select: none;
+  }
+  
+  .rbs-date-chip:hover {
+    background: var(--rbs-surface);
+  }
+  
+  .rbs-date-chip.rbs-selected {
+    background: var(--rbs-accent);
+    color: white;
+    border-color: var(--rbs-accent);
+    font-weight: 600;
+    outline: 2px solid var(--rbs-accent);
+    outline-offset: -1px;
+  }
+  
+  .rbs-date-weekday {
+    font-size: 10px;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  
+  .rbs-date-label {
+    font-size: 11px;
+  }
+  
+  .rbs-window-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  
+  .rbs-window-select {
+    width: 88px;
+  }
+  
+  .rbs-topbar-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+  }
+  
+  .rbs-action-btn {
+    background: var(--rbs-surface2);
+    border: 1px solid var(--rbs-border);
+    color: var(--rbs-primary-text);
+    border-radius: var(--rbs-radius);
+    padding: 6px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    min-height: 28px;
+    white-space: nowrap;
+    min-width: 60px;
+  }
+  
+  .rbs-action-btn:hover {
+    background: var(--rbs-surface);
+  }
+  
+  .rbs-action-btn.rbs-primary {
+    background: var(--rbs-accent);
+    color: white;
+    border-color: var(--rbs-accent);
+  }
+  
+  .rbs-action-btn.rbs-primary:hover {
+    background: #d93046;
+  }
+  
+  .rbs-main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+  }
+  
+  .rbs-board-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  
+  .rbs-board-header {
+    height: var(--rbs-hour-height);
+    background: var(--rbs-surface);
+    border-bottom: 1px solid var(--rbs-border);
+    display: grid;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  
+  .rbs-room-label {
+    padding: 0 12px;
+    font-family: var(--rbs-font-mono);
+    font-size: 12px;
+    color: var(--rbs-muted);
+    border-right: 1px solid var(--rbs-border);
+  }
+  
+  .rbs-board-scroll {
+    flex: 1;
+    overflow: auto;
+    background-image: repeating-linear-gradient(to bottom, transparent 0 31px, var(--rbs-border) 31px 32px);
+  }
+  
+  .rbs-board-rows {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .rbs-board-row {
+    height: var(--rbs-row-height);
+    display: grid;
+    align-items: center;
+    border-bottom: 1px solid var(--rbs-border);
+  }
+  
+  .rbs-room-info {
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 8px;
+    font-size: 12px;
+    border-right: 1px solid var(--rbs-border);
+  }
+  
+  .rbs-room-code {
+    font-family: var(--rbs-font-mono);
+    color: var(--rbs-primary-text);
+  }
+  
+  .rbs-room-type {
+    color: var(--rbs-muted);
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+  }
+  
+  .rbs-room-cap {
+    background: var(--rbs-surface2);
+    color: var(--rbs-primary-text);
+    border-radius: 999px;
+    padding: 0 6px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-left: auto;
+  }
+  
+  .rbs-slot-cells {
+    display: grid;
+    gap: 1px;
+    height: 100%;
+    align-items: center;
+  }
+  
+  .rbs-slot-cell {
+    height: 100%;
+    border-right: 1px solid var(--rbs-border);
+  }
+  
+  .rbs-slot-cell.rbs-hour-boundary {
+    border-right-color: var(--rbs-border-hour);
+  }
+  
+  .rbs-slot-cell.rbs-free {
+    background: var(--rbs-free);
+  }
+  
+  .rbs-slot-cell.rbs-taken {
+    background: var(--rbs-taken);
+  }
+  
+  .rbs-slot-cell.rbs-unknown {
+    background: var(--rbs-surface2);
+  }
+  
+  .rbs-slot-cell.rbs-outside {
+    opacity: 0.3;
+  }
+  
+  .rbs-slot-cell.rbs-selected {
+    outline: 2px solid var(--rbs-accent);
+    outline-offset: -1px;
+    z-index: 1;
+  }
+  
+  .rbs-slot-cell.rbs-skel {
+    background: linear-gradient(90deg, var(--rbs-surface2) 25%, var(--rbs-surface) 37%, var(--rbs-surface2) 63%);
+    background-size: 400% 100%;
+    animation: rbs-shimmer 1.2s ease-in-out infinite;
+  }
+  
+  @keyframes rbs-shimmer {
+    0% {
+      background-position: 100% 0;
+    }
+    100% {
+      background-position: 0 0;
+    }
+  }
+  
+  .rbs-statusbar {
+    height: var(--rbs-status-height);
+    background: var(--rbs-surface);
+    border-top: 1px solid var(--rbs-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    font-family: var(--rbs-font-mono);
+    font-size: 11px;
+    color: var(--rbs-muted);
+    flex-shrink: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  
+  .rbs-stats {
+    display: flex;
+    gap: 12px;
+  }
+  
+  .rbs-error-indicator {
+    color: #ff6b6b;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  
+  .rbs-retry-btn {
+    background: none;
+    border: none;
+    color: var(--rbs-accent);
+    cursor: pointer;
+    text-decoration: underline;
+    font-family: inherit;
+    font-size: inherit;
+    padding: 0;
+    margin: 0;
+  }
+  
+  .rbs-legend {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    margin-right: 12px;
+    font-size: 11px;
+    color: var(--rbs-muted);
+  }
+  
+  .rbs-legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  
+  .rbs-legend-dot.rbs-free-dot {
+    background-color: var(--rbs-free);
+  }
+  
+  .rbs-legend-dot.rbs-taken-dot {
+    background-color: var(--rbs-taken);
+  }
+  
+  @media (max-width: 1279px) {
+    .rbs-topbar {
+      flex-wrap: wrap;
+      height: auto;
+      padding: 8px;
+    }
+    
+    .rbs-date-chips {
+      order: 1;
+      width: 100%;
+      margin-top: 8px;
+    }
+  }
+  
+  .rbs-fullpage.rbs-app-hidden {
+    display: none !important;
+  }
+  
+  /* Shoelace component customizations */
+  sl-select[size="small"] {
+    --sl-input-height-small: 28px;
+    --sl-input-font-size-small: 12px;
+  }
+  
+  sl-input[size="small"] {
+    --sl-input-height-small: 28px;
+    --sl-input-font-size-small: 12px;
+  }
+  
+  sl-button[size="small"] {
+    --sl-button-font-size-small: 12px;
+  }
+  
+  .rbs-shoelace-fallback {
+    padding: 4px 8px;
+    background: var(--rbs-surface2);
+    border: 1px solid var(--rbs-border);
+    border-radius: var(--rbs-radius);
+    font-size: 11px;
+    color: var(--rbs-muted);
+    text-align: center;
+  }`;
 
   const N = globalThis.RBS_NATIVE || globalThis;
   const {
@@ -37,6 +562,9 @@
     filterRooms,
     axisGridTemplate,
     buildAxisHeaderCells,
+    hasShoelace,
+    defaultForm,
+    queueStatus,
   } = N;
 
   // Global UI references
@@ -83,6 +611,60 @@
       }
     }
     return node;
+  }
+
+  // Helper for creating Shoelace components with fallback
+  function createControl(tag, props, children, fallbackTag = 'div') {
+    const useShoelace = hasShoelace();
+    const element = useShoelace ? document.createElement(tag) : document.createElement(fallbackTag);
+    
+    if (props) {
+      for (const [k, v] of Object.entries(props)) {
+        if (k === 'class') {
+          element.className = v;
+        } else if (k === 'text') {
+          if (useShoelace && tag.startsWith('sl-')) {
+            element.textContent = v;
+          } else {
+            element.textContent = v;
+          }
+        } else if (k === 'value' && useShoelace && tag.startsWith('sl-')) {
+          element.value = v;
+        } else if (k === 'placeholder' && useShoelace && tag.startsWith('sl-')) {
+          element.placeholder = v;
+        } else if (k === 'type' && useShoelace && tag.startsWith('sl-')) {
+          element.type = v;
+        } else if (k === 'size' && useShoelace && tag.startsWith('sl-')) {
+          element.size = v;
+        } else if (k === 'variant' && useShoelace && tag.startsWith('sl-')) {
+          element.variant = v;
+        } else if (k === 'clearable' && useShoelace && tag.startsWith('sl-')) {
+          element.clearable = v;
+        } else if (k === 'hoist' && useShoelace && tag.startsWith('sl-')) {
+          element.hoist = v;
+        } else if (k === 'pill' && useShoelace && tag.startsWith('sl-')) {
+          element.pill = v;
+        } else if (k.startsWith('on') && typeof v === 'function') {
+          const eventName = k.slice(2).toLowerCase();
+          element.addEventListener(eventName, v);
+        } else if (v != null) {
+          element.setAttribute(k, v);
+        }
+      }
+    }
+    
+    if (children) {
+      for (const c of [].concat(children)) {
+        if (c == null) continue;
+        if (typeof c === 'string') {
+          element.appendChild(document.createTextNode(c));
+        } else if (c instanceof HTMLElement || c instanceof SVGElement) {
+          element.appendChild(c);
+        }
+      }
+    }
+    
+    return element;
   }
 
   // Merge select options preserving current selection
@@ -172,39 +754,78 @@
     const roomTypes = readRoomTypes();
     const windowOpts = readWindowOptions();
     
+    // Check if using Shoelace
+    const isShoelace = typeSelect.tagName === 'SL-SELECT';
+    
     // Update room type select
     const currentTypeValue = typeSelect.value;
-    const existingTypeOptions = Array.from(typeSelect.options).map(opt => opt.value);
+    const existingTypeOptions = isShoelace 
+      ? Array.from(typeSelect.querySelectorAll('sl-option')).map(opt => opt.value)
+      : Array.from(typeSelect.options).map(opt => opt.value);
     const typeResult = mergeSelectOptions(existingTypeOptions, roomTypes, currentTypeValue);
     
-    typeSelect.innerHTML = '';
-    typeSelect.appendChild(el('option', { value: '', text: 'All rooms' }));
-    for (const t of typeResult.options) {
-      typeSelect.appendChild(el('option', { value: t, text: t }));
+    if (isShoelace) {
+      // Clear and rebuild sl-options
+      typeSelect.innerHTML = '';
+      const allOption = createControl('sl-option', { value: '', text: 'All rooms' }, null, 'option');
+      typeSelect.appendChild(allOption);
+      for (const t of typeResult.options) {
+        const option = createControl('sl-option', { value: t, text: t }, null, 'option');
+        typeSelect.appendChild(option);
+      }
+      typeSelect.value = typeResult.value;
+    } else {
+      typeSelect.innerHTML = '';
+      typeSelect.appendChild(el('option', { value: '', text: 'All rooms' }));
+      for (const t of typeResult.options) {
+        typeSelect.appendChild(el('option', { value: t, text: t }));
+      }
+      typeSelect.value = typeResult.value;
     }
-    typeSelect.value = typeResult.value;
     
     // Update window start select
     const currentStartValue = startSelect.value;
-    const existingStartOptions = Array.from(startSelect.options).map(opt => opt.value);
+    const existingStartOptions = isShoelace
+      ? Array.from(startSelect.querySelectorAll('sl-option')).map(opt => opt.value)
+      : Array.from(startSelect.options).map(opt => opt.value);
     const startResult = mergeSelectOptions(existingStartOptions, windowOpts.from, currentStartValue);
     
-    startSelect.innerHTML = '';
-    for (const t of startResult.options) {
-      startSelect.appendChild(el('option', { value: t, text: t }));
+    if (isShoelace) {
+      startSelect.innerHTML = '';
+      for (const t of startResult.options) {
+        const option = createControl('sl-option', { value: t, text: t }, null, 'option');
+        startSelect.appendChild(option);
+      }
+      startSelect.value = startResult.value;
+    } else {
+      startSelect.innerHTML = '';
+      for (const t of startResult.options) {
+        startSelect.appendChild(el('option', { value: t, text: t }));
+      }
+      startSelect.value = startResult.value;
     }
-    startSelect.value = startResult.value;
     
     // Update window end select
     const currentEndValue = endSelect.value;
-    const existingEndOptions = Array.from(endSelect.options).map(opt => opt.value);
+    const existingEndOptions = isShoelace
+      ? Array.from(endSelect.querySelectorAll('sl-option')).map(opt => opt.value)
+      : Array.from(endSelect.options).map(opt => opt.value);
     const endResult = mergeSelectOptions(existingEndOptions, windowOpts.to, currentEndValue);
     
-    endSelect.innerHTML = '';
-    for (const t of endResult.options) {
-      endSelect.appendChild(el('option', { value: t, text: t }));
+    if (isShoelace) {
+      endSelect.innerHTML = '';
+      for (const t of endResult.options) {
+        const option = createControl('sl-option', { value: t, text: t }, null, 'option');
+        endSelect.appendChild(option);
+      }
+      endSelect.value = endResult.value;
+    } else {
+      endSelect.innerHTML = '';
+      for (const t of endResult.options) {
+        endSelect.appendChild(el('option', { value: t, text: t }));
+      }
+      endSelect.value = endResult.value;
     }
-    endSelect.value = endResult.value;
   }
 
   // Populate building select from the live cascade
@@ -399,6 +1020,7 @@
   }
 
   function buildTopBar(shellUI, roomTypes, windowOpts, attachListeners = true) {
+    const useShoelace = hasShoelace();
     const topbar = el('div', { class: 'rbs-topbar' });
     
     // Brand
@@ -409,61 +1031,133 @@
     ]);
     topbar.appendChild(brand);
     
-    // Building select
-    const buildingSelect = el('select');
-    buildingSelect.appendChild(el('option', { value: '', text: 'Building…' }));
-    // Will be populated asynchronously
+    // Building select - use sl-select with hoist to avoid clipping
+    const buildingSelect = useShoelace 
+      ? createControl('sl-select', { 
+          size: 'small', 
+          hoist: true,
+          placeholder: 'Building…'
+        }, [
+          createControl('sl-option', { value: '', text: 'All buildings' })
+        ], 'select')
+      : el('select', {}, [
+          el('option', { value: '', text: 'Building…' })
+        ]);
+    
     topbar.appendChild(el('div', { class: 'rbs-control-group' }, [buildingSelect]));
     
-    // Room type select
-    const typeSelect = el('select');
-    typeSelect.appendChild(el('option', { value: '', text: 'All rooms' }));
-    for (const t of roomTypes) {
-      typeSelect.appendChild(el('option', { value: t, text: t }));
-    }
+    // Room type select - use sl-select with hoist
+    const typeSelect = useShoelace
+      ? createControl('sl-select', {
+          size: 'small',
+          hoist: true
+        }, [
+          createControl('sl-option', { value: '', text: 'All rooms' }),
+          ...roomTypes.map(t => createControl('sl-option', { value: t, text: t }))
+        ], 'select')
+      : (() => {
+          const select = el('select');
+          select.appendChild(el('option', { value: '', text: 'All rooms' }));
+          for (const t of roomTypes) {
+            select.appendChild(el('option', { value: t, text: t }));
+          }
+          return select;
+        })();
+    
     topbar.appendChild(el('div', { class: 'rbs-control-group' }, [typeSelect]));
     
-    // Capacity input
-    const capInput = el('input', {
-      class: 'rbs-capacity-input',
-      type: 'number',
-      min: '0',
-      placeholder: 'Min cap',
-      'aria-label': 'Minimum capacity',
-      value: ''
-    });
+    // Capacity input - use sl-input type="number"
+    const capInput = useShoelace
+      ? createControl('sl-input', {
+          type: 'number',
+          size: 'small',
+          placeholder: 'Min cap',
+          'aria-label': 'Minimum capacity',
+          value: ''
+        }, null, 'input')
+      : el('input', {
+          class: 'rbs-capacity-input',
+          type: 'number',
+          min: '0',
+          placeholder: 'Min cap',
+          'aria-label': 'Minimum capacity',
+          value: ''
+        });
+    
     topbar.appendChild(el('div', { class: 'rbs-control-group' }, [capInput]));
     
-    // Search input
-    const searchInput = el('input', {
-      class: 'rbs-search-input',
-      type: 'search',
-      placeholder: 'Search rooms'
-    });
+    // Search input - use sl-input type="search" with clearable
+    const searchInput = useShoelace
+      ? createControl('sl-input', {
+          type: 'search',
+          size: 'small',
+          placeholder: 'Filter rooms',
+          clearable: true
+        }, null, 'input')
+      : el('input', {
+          class: 'rbs-search-input',
+          type: 'search',
+          placeholder: 'Search rooms'
+        });
+    
     topbar.appendChild(el('div', { class: 'rbs-control-group' }, [searchInput]));
     
-    // Date chips
+    // Date chips (keep as custom, not Shoelace)
     const dateChips = el('div', { class: 'rbs-date-chips' });
     buildDateChips(new Date(), 14).forEach(chip => dateChips.appendChild(chip));
     topbar.appendChild(dateChips);
     
-    // Window controls
+    // Window controls - use sl-select
     const windowControls = el('div', { class: 'rbs-window-controls' });
-    const startSelect = el('select', { class: 'rbs-window-select' });
-    const endSelect = el('select', { class: 'rbs-window-select' });
-    for (const t of windowOpts.from) startSelect.appendChild(el('option', { value: t, text: t }));
-    for (const t of windowOpts.to) endSelect.appendChild(el('option', { value: t, text: t }));
-    if (windowOpts.from.includes(DEFAULT_WINDOW.start)) startSelect.value = DEFAULT_WINDOW.start;
-    if (windowOpts.to.includes(DEFAULT_WINDOW.end)) endSelect.value = DEFAULT_WINDOW.end;
+    
+    const startSelect = useShoelace
+      ? createControl('sl-select', { size: 'small' }, 
+          windowOpts.from.map(t => createControl('sl-option', { value: t, text: t })),
+          'select')
+      : (() => {
+          const select = el('select', { class: 'rbs-window-select' });
+          for (const t of windowOpts.from) select.appendChild(el('option', { value: t, text: t }));
+          return select;
+        })();
+    
+    const endSelect = useShoelace
+      ? createControl('sl-select', { size: 'small' },
+          windowOpts.to.map(t => createControl('sl-option', { value: t, text: t })),
+          'select')
+      : (() => {
+          const select = el('select', { class: 'rbs-window-select' });
+          for (const t of windowOpts.to) select.appendChild(el('option', { value: t, text: t }));
+          return select;
+        })();
+    
+    // Set default values
+    if (windowOpts.from.includes(DEFAULT_WINDOW.start)) {
+      if (useShoelace) startSelect.value = DEFAULT_WINDOW.start;
+      else startSelect.value = DEFAULT_WINDOW.start;
+    }
+    if (windowOpts.to.includes(DEFAULT_WINDOW.end)) {
+      if (useShoelace) endSelect.value = DEFAULT_WINDOW.end;
+      else endSelect.value = DEFAULT_WINDOW.end;
+    }
+    
     windowControls.appendChild(startSelect);
     windowControls.appendChild(el('span', { text: '–' }));
     windowControls.appendChild(endSelect);
     topbar.appendChild(windowControls);
     
-    // Sort select
-    const sortSelect = el('select', { class: 'rbs-window-select' });
-    sortSelect.appendChild(el('option', { value: 'name', text: 'Name' }));
-    sortSelect.appendChild(el('option', { value: 'capacity', text: 'Capacity' }));
+    // Sort select - use sl-select
+    const sortSelect = useShoelace
+      ? createControl('sl-select', { size: 'small' }, [
+          createControl('sl-option', { value: 'name', text: 'Name' }),
+          createControl('sl-option', { value: 'capacity', text: 'Capacity' })
+        ], 'select')
+      : (() => {
+          const select = el('select', { class: 'rbs-window-select' });
+          select.appendChild(el('option', { value: 'name', text: 'Name' }));
+          select.appendChild(el('option', { value: 'capacity', text: 'Capacity' }));
+          return select;
+        })();
+    
     topbar.appendChild(el('div', { class: 'rbs-control-group' }, [sortSelect]));
     
     // Legend
@@ -475,29 +1169,80 @@
     ]);
     topbar.appendChild(legend);
     
-    // Action buttons
+    // Action buttons - use sl-button
     const actions = el('div', { class: 'rbs-topbar-actions' });
-    const refreshBtn = el('button', {
-      class: 'rbs-action-btn',
-      text: 'Refresh'
-    });
-    const nativeBtn = el('button', {
-      class: 'rbs-action-btn',
-      text: 'Native UI'
-    });
+    
+    const refreshBtn = useShoelace
+      ? createControl('sl-button', {
+          size: 'small',
+          variant: 'default',
+          text: 'Refresh'
+        }, null, 'button')
+      : el('button', {
+          class: 'rbs-action-btn',
+          text: 'Refresh'
+        });
+    
+    const nativeBtn = useShoelace
+      ? createControl('sl-button', {
+          size: 'small',
+          variant: 'default',
+          text: 'Native UI'
+        }, null, 'button')
+      : el('button', {
+          class: 'rbs-action-btn',
+          text: 'Native UI'
+        });
+    
+    // Book on native form button (for drawer)
+    const bookBtn = useShoelace
+      ? createControl('sl-button', {
+          size: 'small',
+          variant: 'primary',
+          text: 'Book on native form'
+        }, null, 'button')
+      : el('button', {
+          class: 'rbs-action-btn rbs-primary',
+          text: 'Book on native form'
+        });
+    
+    // Clear button (for drawer)
+    const clearBtn = useShoelace
+      ? createControl('sl-button', {
+          size: 'small',
+          variant: 'text',
+          text: 'Clear'
+        }, null, 'button')
+      : el('button', {
+          class: 'rbs-action-btn',
+          text: 'Clear'
+        });
     
     // Only attach listeners if requested (safer for initialization)
     if (attachListeners) {
-      refreshBtn.addEventListener('click', onLoadBoard);
-      nativeBtn.addEventListener('click', () => {
-        if (document.documentElement.classList.contains('rbsx-native-hidden')) {
-          showNativeUI();
-          nativeBtn.textContent = 'Show App';
-        } else {
-          hideNativeUI();
-          nativeBtn.textContent = 'Native UI';
-        }
-      });
+      if (useShoelace) {
+        refreshBtn.addEventListener('click', onLoadBoard);
+        nativeBtn.addEventListener('click', () => {
+          if (document.documentElement.classList.contains('rbsx-native-hidden')) {
+            showNativeUI();
+            nativeBtn.textContent = 'Show App';
+          } else {
+            hideNativeUI();
+            nativeBtn.textContent = 'Native UI';
+          }
+        });
+      } else {
+        refreshBtn.addEventListener('click', onLoadBoard);
+        nativeBtn.addEventListener('click', () => {
+          if (document.documentElement.classList.contains('rbsx-native-hidden')) {
+            showNativeUI();
+            nativeBtn.textContent = 'Show App';
+          } else {
+            hideNativeUI();
+            nativeBtn.textContent = 'Native UI';
+          }
+        });
+      }
     }
     
     actions.appendChild(refreshBtn);
@@ -520,6 +1265,9 @@
       sortSelect,
       refreshBtn,
       nativeBtn,
+      bookBtn,
+      clearBtn,
+      useShoelace
     };
   }
   
@@ -552,31 +1300,38 @@
     });
     
     // Building select - immediate reload when changed
-    uiRefs.buildingSelect.addEventListener('change', () => {
+    const buildingEvent = uiRefs.useShoelace ? 'sl-change' : 'change';
+    uiRefs.buildingSelect.addEventListener(buildingEvent, () => {
       // Update room types and window options based on new building
       updateTypeAndWindowSelects(uiRefs.typeSelect, uiRefs.startSelect, uiRefs.endSelect);
       requestReload('building');
     });
     
     // Room type select - immediate reload
-    uiRefs.typeSelect.addEventListener('change', () => requestReload('type'));
+    const typeEvent = uiRefs.useShoelace ? 'sl-change' : 'change';
+    uiRefs.typeSelect.addEventListener(typeEvent, () => requestReload('type'));
     
     // Window start select - immediate reload
-    uiRefs.startSelect.addEventListener('change', () => requestReload('window-start'));
+    const startEvent = uiRefs.useShoelace ? 'sl-change' : 'change';
+    uiRefs.startSelect.addEventListener(startEvent, () => requestReload('window-start'));
     
     // Window end select - immediate reload
-    uiRefs.endSelect.addEventListener('change', () => requestReload('window-end'));
+    const endEvent = uiRefs.useShoelace ? 'sl-change' : 'change';
+    uiRefs.endSelect.addEventListener(endEvent, () => requestReload('window-end'));
     
     // Sort select - immediate reload
-    uiRefs.sortSelect.addEventListener('change', () => requestReload('sort'));
+    const sortEvent = uiRefs.useShoelace ? 'sl-change' : 'change';
+    uiRefs.sortSelect.addEventListener(sortEvent, () => requestReload('sort'));
     
     // Capacity input - debounced reload
     const debouncedCapacityReload = debounce(() => requestReload('capacity'), 300);
-    uiRefs.capInput.addEventListener('input', debouncedCapacityReload);
+    const capacityEvent = uiRefs.useShoelace ? 'sl-input' : 'input';
+    uiRefs.capInput.addEventListener(capacityEvent, debouncedCapacityReload);
     
     // Search input - debounced reload
     const debouncedSearchReload = debounce(() => requestReload('search'), 300);
-    uiRefs.searchInput.addEventListener('input', debouncedSearchReload);
+    const searchEvent = uiRefs.useShoelace ? 'sl-input' : 'input';
+    uiRefs.searchInput.addEventListener(searchEvent, debouncedSearchReload);
   }
 
   // ---- board ----------------------------------------------------------------
@@ -667,11 +1422,12 @@
     rooms: [], // parseRooms output (filtered + sorted), current render order
     queue: null, // createSlotQueue instance
     cache: new Map(), // persists across renders; keyed rsrcId|date|window|status
-    blocks: new Map(), // roomId -> { rowEl, cellsEl, cells, loaded }
+    blocks: new Map(), // roomId -> { rowEl, cellsEl, cells, loaded, failed }
     observer: null, // IntersectionObserver for viewport prioritisation
     generation: 0,
     loadedCount: 0,
     totalCount: 0,
+    failedCount: 0,
   };
 
   // ---- live API layer (same-origin POSTs) -----------------------------------
@@ -785,7 +1541,9 @@
   function markBlockFailed(roomId) {
     const entry = board.blocks.get(roomId);
     if (!entry) return;
-    // TODO: show error indicator
+    
+    // Mark as failed
+    entry.failed = true;
     
     // Update error text in status bar
     if (!ui) return;
@@ -801,7 +1559,12 @@
     const entry = board.blocks.get(roomId);
     if (!entry || entry.accounted) return;
     entry.accounted = true;
-    board.loadedCount += 1;
+    
+    if (entry.failed) {
+      board.failedCount += 1;
+    } else {
+      board.loadedCount += 1;
+    }
   }
 
   // ---- queue setup ----------------------------------------------------------
@@ -831,7 +1594,19 @@
     const statsEl = ui.stats?.querySelector('#rbs-stats-text');
     if (statsEl) {
       const inFlight = board.queue?.inFlight || 0;
-      statsEl.textContent = `${board.loadedCount}/${board.totalCount} rooms loaded · ${inFlight} requests in flight`;
+      let statusText = queueStatus({
+        loaded: board.loadedCount,
+        total: board.totalCount,
+        inFlight: inFlight,
+        failed: board.failedCount
+      });
+      
+      // Add warning for "All rooms" selection
+      if (board.form && board.form.roomType === '' && board.totalCount >= 60) {
+        statusText += ` (All rooms — ${board.totalCount} rooms, ~2.2 s each)`;
+      }
+      
+      statsEl.textContent = statusText;
     }
   }
 
@@ -841,7 +1616,12 @@
     if (!ui) return;
     const statsEl = ui.stats?.querySelector('#rbs-stats-text');
     if (statsEl) {
-      statsEl.textContent = `${board.loadedCount}/${board.totalCount} rooms loaded · Done`;
+      statsEl.textContent = queueStatus({
+        loaded: board.loadedCount,
+        total: board.totalCount,
+        inFlight: 0,
+        failed: board.failedCount
+      });
     }
     
     // Clear any error text on successful completion
@@ -1329,6 +2109,7 @@
     board.blocks = new Map();
     board.loadedCount = 0;
     board.totalCount = 0;
+    board.failedCount = 0;
   }
 
   // ---- main Load board flow ------------------------------------------------
@@ -1366,6 +2147,7 @@
     board.blocks = new Map();
     board.loadedCount = 0;
     board.totalCount = 0;
+    board.failedCount = 0;
     if (board.observer) { board.observer.disconnect(); board.observer = null; }
     
     // Reset status bar
@@ -1490,7 +2272,49 @@
       // Populate building select asynchronously, which will also update room types and window options
       populateBuildingSelect(ui.buildingSelect, ui.typeSelect, ui.startSelect, ui.endSelect).then(() => {
         // After building select is populated and room types/window options are updated,
-        // trigger initial load if all required fields are available
+        // Apply default form (first concrete room type + native building)
+        const nativeState = {
+          roomTypes: readRoomTypes(),
+          building: readIdValue(RBS_CONTROL_IDS.building),
+          buildingName: readBuildingName()
+        };
+        const defaultFormValues = defaultForm(nativeState);
+        
+        // Override room type with first concrete type
+        if (defaultFormValues.roomType && ui.typeSelect) {
+          // Check if this room type exists in the select
+          let roomTypeExists = false;
+          if (ui.useShoelace && ui.typeSelect.tagName === 'SL-SELECT') {
+            roomTypeExists = Array.from(ui.typeSelect.querySelectorAll('sl-option'))
+              .some(opt => opt.value === defaultFormValues.roomType);
+          } else if (ui.typeSelect.options) {
+            roomTypeExists = Array.from(ui.typeSelect.options)
+              .some(opt => opt.value === defaultFormValues.roomType);
+          }
+          
+          if (roomTypeExists) {
+            ui.typeSelect.value = defaultFormValues.roomType;
+          }
+        }
+        
+        // Set building if available
+        if (defaultFormValues.building && ui.buildingSelect && !ui.buildingSelect.disabled) {
+          // Check if building exists in select
+          let buildingExists = false;
+          if (ui.useShoelace && ui.buildingSelect.tagName === 'SL-SELECT') {
+            buildingExists = Array.from(ui.buildingSelect.querySelectorAll('sl-option'))
+              .some(opt => opt.value === defaultFormValues.building);
+          } else if (ui.buildingSelect.options) {
+            buildingExists = Array.from(ui.buildingSelect.options)
+              .some(opt => opt.value === defaultFormValues.building);
+          }
+          
+          if (buildingExists) {
+            ui.buildingSelect.value = defaultFormValues.building;
+          }
+        }
+        
+        // Trigger initial load if all required fields are available
         if (ui.buildingSelect.disabled === false) {
           // Check if we have valid form values
           const hasBuilding = ui.buildingSelect.value !== '';
@@ -1516,7 +2340,7 @@
         }
       });
       
-      // Restore last search (but don't auto-run)
+      // Restore last search (but don't auto-run) - but override with defaults
       const last = await loadLast();
       if (last) applyForm(last, roomTypes, windowOpts);
       

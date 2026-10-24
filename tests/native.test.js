@@ -484,3 +484,143 @@ test('rowGridTemplate should be same as axisGridTemplate', () => {
   // So row template should match header template
   assert.equal(headerTemplate, '180px repeat(30, minmax(0, 1fr))');
 });
+
+// 25. hasShoelace
+test('hasShoelace returns true when customElements.get returns a function', () => {
+  // Test with fake customElements
+  const originalCustomElements = global.customElements;
+  
+  try {
+    // Test case 1: customElements.get returns a function
+    global.customElements = {
+      get: (name) => name === 'sl-button' ? () => {} : undefined
+    };
+    assert.equal(native.hasShoelace(), true);
+    
+    // Test case 2: customElements.get returns undefined
+    global.customElements = {
+      get: () => undefined
+    };
+    assert.equal(native.hasShoelace(), false);
+    
+    // Test case 3: customElements is undefined
+    global.customElements = undefined;
+    assert.equal(native.hasShoelace(), false);
+    
+    // Test case 4: customElements.get returns null
+    global.customElements = {
+      get: () => null
+    };
+    assert.equal(native.hasShoelace(), false);
+    
+    // Test case 5: customElements.get returns a non-function
+    global.customElements = {
+      get: () => 'not a function'
+    };
+    assert.equal(native.hasShoelace(), false);
+  } finally {
+    global.customElements = originalCustomElements;
+  }
+});
+
+// 26. defaultForm
+test('defaultForm returns the first concrete room type and native building', () => {
+  // Test case 1: Room types available, building present
+  const nativeState1 = {
+    roomTypes: ['Discussion Room', 'Lecture Theatre', 'Lab'],
+    building: 'E2',
+    buildingName: 'E2 - Engineering Block 2'
+  };
+  
+  const result1 = native.defaultForm(nativeState1);
+  assert.equal(result1.roomType, 'Discussion Room');
+  assert.equal(result1.building, 'E2');
+  assert.equal(result1.buildingName, 'E2 - Engineering Block 2');
+  
+  // Test case 2: Empty room types (should return empty string)
+  const nativeState2 = {
+    roomTypes: [],
+    building: '',
+    buildingName: ''
+  };
+  
+  const result2 = native.defaultForm(nativeState2);
+  assert.equal(result2.roomType, '');
+  assert.equal(result2.building, '');
+  assert.equal(result2.buildingName, '');
+  
+  // Test case 3: First concrete type (skip empty strings)
+  const nativeState3 = {
+    roomTypes: ['', 'Lecture Theatre', 'Lab'],
+    building: 'C1',
+    buildingName: 'C1 - Communications Block'
+  };
+  
+  const result3 = native.defaultForm(nativeState3);
+  assert.equal(result3.roomType, 'Lecture Theatre');
+  assert.equal(result3.building, 'C1');
+  assert.equal(result3.buildingName, 'C1 - Communications Block');
+  
+  // Test case 4: No nativeState provided
+  const result4 = native.defaultForm();
+  assert.equal(result4.roomType, '');
+  assert.equal(result4.building, '');
+  assert.equal(result4.buildingName, '');
+  
+  // Test case 5: Partial nativeState
+  const result5 = native.defaultForm({ roomTypes: ['Discussion Room'] });
+  assert.equal(result5.roomType, 'Discussion Room');
+  assert.equal(result5.building, '');
+  assert.equal(result5.buildingName, '');
+});
+
+// 27. queueStatus
+test('queueStatus generates correct status strings for different loading states', () => {
+  // Test case 1: Loading with 1 in flight
+  assert.equal(
+    native.queueStatus({ loaded: 13, total: 60, inFlight: 1, failed: 0 }),
+    '60 rooms · loading slots 13/60 · 1 request in flight'
+  );
+  
+  // Test case 2: Idle between requests
+  assert.equal(
+    native.queueStatus({ loaded: 13, total: 60, inFlight: 0, failed: 0 }),
+    '60 rooms · loading slots 13/60 · idle'
+  );
+  
+  // Test case 3: Done (all loaded, no failures)
+  assert.equal(
+    native.queueStatus({ loaded: 60, total: 60, inFlight: 0, failed: 0 }),
+    '60/60 rooms loaded · Done'
+  );
+  
+  // Test case 4: Partial failure (some failed)
+  assert.equal(
+    native.queueStatus({ loaded: 55, total: 60, inFlight: 0, failed: 5 }),
+    '55/60 rooms loaded · 5 failed'
+  );
+  
+  // Test case 5: Multiple requests in flight (shouldn't happen, but test anyway)
+  assert.equal(
+    native.queueStatus({ loaded: 10, total: 60, inFlight: 2, failed: 0 }),
+    '60 rooms · loading slots 10/60 · 2 requests in flight'
+  );
+  
+  // Test case 6: Zero rooms total
+  assert.equal(
+    native.queueStatus({ loaded: 0, total: 0, inFlight: 0, failed: 0 }),
+    '0 rooms'
+  );
+  
+  // Test case 7: Default/empty values
+  assert.equal(
+    native.queueStatus({}),
+    '0 rooms'
+  );
+  
+  // Test case 8: Just loaded and total
+  assert.equal(
+    native.queueStatus({ loaded: 5, total: 10 }),
+    '10 rooms · loading slots 5/10 · idle'
+  );
+});

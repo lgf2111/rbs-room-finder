@@ -826,6 +826,83 @@ function selfCheck(refs) {
   return { ok: missing.length === 0, missing };
 }
 
+// --- New helper functions for Shoelace adoption ------------------------------
+
+/**
+ * Check if Shoelace components are available.
+ * @returns {boolean}
+ */
+function hasShoelace() {
+  if (typeof customElements === 'undefined') return false;
+  // Check for sl-button as a representative component
+  return typeof customElements.get('sl-button') === 'function';
+}
+
+/**
+ * Determine default form values based on native page state.
+ * Returns the first concrete room type and the native building when present,
+ * and falls back to 'All rooms' + empty building when native state is empty.
+ * @param {object} nativeState
+ * @param {string[]} nativeState.roomTypes - Available room types from the page
+ * @param {string} nativeState.building - Current building value from native page
+ * @param {string} nativeState.buildingName - Current building name
+ * @returns {{roomType: string, building: string, buildingName: string}}
+ */
+function defaultForm(nativeState) {
+  const { roomTypes = [], building = '', buildingName = '' } = nativeState || {};
+  
+  // Find first concrete room type (not empty string)
+  const firstConcreteType = roomTypes.find(t => t && t.trim() !== '') || '';
+  
+  return {
+    roomType: firstConcreteType,
+    building,
+    buildingName
+  };
+}
+
+/**
+ * Generate status bar text based on loading state.
+ * @param {object} state
+ * @param {number} state.loaded - Number of rooms loaded
+ * @param {number} state.total - Total number of rooms
+ * @param {number} state.inFlight - Number of requests in flight (0 or 1)
+ * @param {number} state.failed - Number of failed room loads
+ * @returns {string}
+ */
+function queueStatus({ loaded = 0, total = 0, inFlight = 0, failed = 0 }) {
+  if (total === 0) {
+    return '0 rooms';
+  }
+  
+  const parts = [];
+  
+  // Show total rooms and loading progress
+  if (loaded + failed >= total) {
+    // All rooms accounted for
+    parts.push(`${loaded}/${total} rooms loaded`);
+  } else {
+    // Still loading
+    parts.push(`${total} rooms · loading slots ${loaded}/${total}`);
+  }
+  
+  if (inFlight > 0) {
+    parts.push(`${inFlight} request${inFlight !== 1 ? 's' : ''} in flight`);
+  } else if (loaded + failed >= total) {
+    // All rooms accounted for (loaded or failed)
+    if (failed > 0) {
+      parts.push(`${failed} failed`);
+    } else {
+      parts.push('Done');
+    }
+  } else {
+    // Still loading, not all rooms accounted for, no requests in flight
+    parts.push('idle');
+  }
+  
+  return parts.join(' · ');
+}
+
 // --- Exports: browser (globalThis) AND Node (module.exports, guarded) --------
 
 const RBS_NATIVE = {
@@ -864,6 +941,9 @@ const RBS_NATIVE = {
   filterRooms,
   axisGridTemplate,
   buildAxisHeaderCells,
+  hasShoelace,
+  defaultForm,
+  queueStatus,
 };
 
 // Expose each on globalThis for the content script / panel.js.
