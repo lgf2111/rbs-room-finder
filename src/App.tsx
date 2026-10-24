@@ -134,7 +134,7 @@ export function App() {
   );
 
   return (
-    <div className="nova-root flex h-screen min-h-0 w-full flex-col">
+    <div className="flex h-screen min-h-0 w-full flex-col">
       <TopBar
         onForm={onForm}
         statusLine={statusLine}

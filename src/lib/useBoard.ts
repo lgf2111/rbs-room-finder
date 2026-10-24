@@ -127,6 +127,13 @@ export function useBoard(form: BoardForm): BoardModel {
 
   // Load the board whenever the form key changes.
   React.useEffect(() => {
+    // The form is not ready until the top bar has emitted a real date. App
+    // seeds an INITIAL_FORM with date='' purely to render the shell; firing a
+    // search for it would issue a throwaway SearchSRB001List before the real
+    // one (the Phase 3 "two initial searches" defect). Skip until date is set,
+    // so first paint issues EXACTLY ONE SearchSRB001List.
+    if (!form.date) return;
+
     let cancelled = false;
     // A new load: bump the generation so any in-flight slot response from the
     // previous form is cached but never painted.

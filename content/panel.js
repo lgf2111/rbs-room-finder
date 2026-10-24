@@ -2747,6 +2747,20 @@
     });
   }
 
+  // Phase 3: Nova is the DEFAULT skin on the search page. This mirrors the exact
+  // decision in src/main.tsx (novaDefaultOn): Nova owns the search page unless
+  // the `?nova=0` escape hatch is present. When Nova owns it, the old panel
+  // board stands down entirely so the two UIs never race or double-fetch. The
+  // old path still runs for `?nova=0` and on every non-search page (launcher).
+  function novaDefaultOn() {
+    try {
+      if (/(?:^|[?&])nova=0(?:&|$)/.test(location.search)) return false; // escape hatch
+      return isSearchPage();
+    } catch (e) {
+      return false;
+    }
+  }
+
   function init() {
     if (!document.body) {
       window.addEventListener('DOMContentLoaded', init, { once: true });
@@ -2761,6 +2775,10 @@
       return;
     }
     if (isSearchPage()) {
+      // Nova owns the search page by default. Do NOT build the old board (that
+      // would issue its own SearchSRB001List + per-room slot fills). Only the
+      // `?nova=0` escape hatch falls through to the old panel UI.
+      if (novaDefaultOn()) return;
       initSearchPage();
       wireNativeChangeBridge();
     } else {
