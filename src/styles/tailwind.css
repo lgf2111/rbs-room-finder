@@ -71,3 +71,94 @@
   font-family: var(--rbs-font-mono);
   font-variant-numeric: tabular-nums;
 }
+
+/*
+ * Board cell states — colour-blind-safe palette (Okabe-Ito derived).
+ *   free   : teal/green fill
+ *   booked : orange, overlaid with a 45deg hatch so it reads without colour
+ *   closed : neutral grey, flat, visually distinct from booked (no hatch, dim)
+ *   skeleton: shimmering placeholder painted before slots load
+ * Row height is ~32px; the room column and times align to the shared axis.
+ */
+.nova-root {
+  --nova-row-h: 32px;
+  --nova-free: #0a7d63;        /* bluish green */
+  --nova-free-fg: #d8f5ec;
+  --nova-booked: #c86a00;      /* vermilion/orange */
+  --nova-booked-hatch: rgba(0, 0, 0, 0.32);
+  --nova-booked-fg: #ffe9d4;
+  --nova-closed: #3a3f47;      /* neutral grey, clearly not "booked" */
+  --nova-closed-fg: #8b9199;
+  --nova-unknown: #202327;
+  --nova-zebra: rgba(255, 255, 255, 0.025);
+  --nova-sel: #3b82f6;         /* blue selection ring */
+}
+
+.nova-cell {
+  height: var(--nova-row-h);
+  min-width: 0;
+  border-right: 1px solid var(--rbs-border-hex);
+  box-sizing: border-box;
+  cursor: pointer;
+  position: relative;
+}
+.nova-cell--hour {
+  border-right-color: var(--rbs-muted, #8b9199);
+}
+.nova-cell--free {
+  background: var(--nova-free);
+}
+.nova-cell--booked {
+  background-color: var(--nova-booked);
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--nova-booked-hatch) 0,
+    var(--nova-booked-hatch) 2px,
+    transparent 2px,
+    transparent 6px
+  );
+}
+.nova-cell--closed {
+  background: var(--nova-closed);
+  opacity: 0.8;
+  cursor: not-allowed;
+}
+.nova-cell--unknown {
+  background: var(--nova-unknown);
+}
+.nova-cell--outside {
+  opacity: 0.4;
+}
+.nova-cell--sel {
+  box-shadow: inset 0 0 0 2px var(--nova-sel);
+}
+.nova-cell--skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--nova-unknown) 25%,
+    rgba(255, 255, 255, 0.06) 37%,
+    var(--nova-unknown) 63%
+  );
+  background-size: 400% 100%;
+  animation: nova-shimmer 1.4s ease infinite;
+  cursor: default;
+}
+@keyframes nova-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+.nova-row--zebra {
+  background: var(--nova-zebra);
+}
+.nova-roomcol {
+  height: var(--nova-row-h);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border-right: 1px solid var(--rbs-border-hex);
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+}

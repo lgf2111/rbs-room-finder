@@ -23,6 +23,8 @@ import {
   type NativeOption,
 } from '@/lib/native-bridge';
 
+import type { BoardForm } from '@/lib/native-bridge';
+
 const ALL_ROOMS = '__all__'; // Radix Select cannot use "" as an item value.
 const ALL_BUILDINGS = '__all_buildings__'; // same: "" is reserved by Radix.
 
@@ -56,15 +58,26 @@ function readPageState(): PageState {
   return { buildings: readBuildings(), roomTypes: readRoomTypes(), windowOpts: readWindowOptions() };
 }
 
+export interface TopBarProps {
+  /** Emitted whenever the form changes (and once on mount). The Nova board
+   *  consumes this; the engine fetches on its own, so no native reload fires. */
+  onForm: (form: BoardForm) => void;
+  /** Rendered into the status line (live rooms/failures/in-flight/elapsed). */
+  statusLine?: React.ReactNode;
+  /** Reveal the native page (hide the app). */
+  onRevealNative?: () => void;
+  /** Focus hook so the "/" shortcut can focus the search box. */
+  searchRef?: React.RefObject<HTMLInputElement>;
+}
+
 /**
- * Phase 2A shadcn top bar. Reads real page state through the panel bridge
- * (content/panel.js `window.__rbsBridge`) and drives the panel's real search
- * engine. Every control pushes its value into the bridge; the building select
- * triggers the native change cascade so room types / window options repopulate,
- * and the bar subscribes to native changes so it reflects live page state
- * instead of a one-time mount snapshot.
+ * Phase 2B shadcn top bar. Reads real page state through the panel bridge
+ * (content/panel.js `window.__rbsBridge`) to populate its selects, and also
+ * pushes the form into the bridge so the native controls stay in sync for the
+ * booking handoff. The Nova board owns fetching, so this bar does NOT trigger a
+ * native reload — it emits a normalised BoardForm through `onForm`.
  */
-export function TopBar() {
+export function TopBar({ onForm, statusLine, onRevealNative, searchRef }: TopBarProps) {
   const dateChips = React.useMemo<DateChip[]>(() => readDateChips(14), []);
 
   // Live native page state, refreshed whenever the native cascade moves.
@@ -121,10 +134,11 @@ export function TopBar() {
     return unsub;
   }, []);
 
-  // Translate the local Nova state (plus any just-changed field) into the
-  // bridge form the panel engine understands.
+  // Translate the local Nova state into the BridgeForm (to keep native controls
+  // in sync for the booking handoff) and the BoardForm the Nova engine fetches
+  // from. Both share the same normalised values.
   const toForm = React.useCallback(
-    (s: TopBarState): BridgeForm => ({
+    (s: TopBarState): BoardForm => ({
       building: s.building === ALL_BUILDINGS ? '' : s.building,
       roomType: s.roomType === ALL_ROOMS ? '' : s.roomType,
       minCapacity: Number(s.capacity) || 0,
@@ -136,34 +150,36 @@ export function TopBar() {
     [dateChips]
   );
 
-  // Apply a patch, mirror it into the panel engine, and (optionally) run a
-  // reload. Building changes always push first so the native cascade fires.
+  // Emit the initial form once on mount so the board loads immediately.
+  const emitted = React.useRef(false);
+  React.useEffect(() => {
+    if (emitted.current) return;
+    emitted.current = true;
+    const form = toForm(state);
+    getBridge()?.applyForm(form as BridgeForm);
+    onForm(form);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Apply a patch, mirror it into the native controls (for the handoff), and
+  // emit the new BoardForm so the Nova board reloads. No native reload fires.
   const drive = React.useCallback(
-    (patch: Partial<TopBarState>, opts?: { reload?: boolean; reason?: string }) => {
+    (patch: Partial<TopBarState>) => {
       setState((prev) => {
         const nextState = { ...prev, ...patch };
-        const bridge = getBridge();
-        if (bridge) {
-          bridge.applyForm(toForm(nextState));
-          if (opts?.reload) bridge.requestReload(opts.reason ?? 'nova');
-        }
+        const form = toForm(nextState);
+        getBridge()?.applyForm(form as BridgeForm);
+        onForm(form);
         return nextState;
       });
     },
-    [toForm]
+    [toForm, onForm]
   );
 
   function onSearch() {
-    const bridge = getBridge();
     const form = toForm(state);
-    if (bridge) {
-      bridge.applyForm(form);
-      bridge.requestReload('nova-search');
-      return;
-    }
-    // No bridge (e.g. isolated preview): leave a trace but never click native.
-    // eslint-disable-next-line no-console
-    console.info('[nova] search requested but no panel bridge present:', form);
+    getBridge()?.applyForm(form as BridgeForm);
+    onForm(form);
   }
 
   return (
@@ -223,6 +239,7 @@ export function TopBar() {
         {/* Free-text search */}
         <Field label="Find">
           <Input
+            ref={searchRef}
             type="text"
             placeholder="room name"
             value={state.search}
@@ -276,10 +293,13 @@ export function TopBar() {
           </Select>
         </Field>
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="secondary" onClick={onRevealNative} data-testid="nova-native-btn">
+            Native UI
+          </Button>
           <Button onClick={onSearch} data-testid="nova-search-btn">
             <Search className="h-3.5 w-3.5" />
-            Search
+            Refresh
           </Button>
         </div>
       </div>
@@ -304,8 +324,21 @@ export function TopBar() {
         ))}
       </div>
 
-      {/* Status bar line */}
-      <StatusBar state={state} dateChips={dateChips} />
+      {/* Status bar line (live counts supplied by the board engine) */}
+      <div
+        data-testid="nova-statusbar"
+        className="flex items-center gap-2 border-t border-border pt-1.5 text-[11px] text-muted-foreground"
+      >
+        <span className="nova-mono">{dateChips[state.dateIndex]?.label ?? '—'}</span>
+        <span>·</span>
+        <span>{state.roomType === ALL_ROOMS ? 'All rooms' : state.roomType}</span>
+        <span>·</span>
+        <span className="nova-mono">
+          {state.windowStart}–{state.windowEnd}
+        </span>
+        <span>·</span>
+        {statusLine}
+      </div>
     </div>
   );
 }
@@ -319,23 +352,4 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function StatusBar({ state, dateChips }: { state: TopBarState; dateChips: DateChip[] }) {
-  const date = dateChips[state.dateIndex]?.label ?? '—';
-  const type = state.roomType === ALL_ROOMS ? 'All rooms' : state.roomType;
-  return (
-    <div
-      data-testid="nova-statusbar"
-      className="flex items-center gap-2 border-t border-border pt-1.5 text-[11px] text-muted-foreground"
-    >
-      <span className="nova-mono">{date}</span>
-      <span>·</span>
-      <span>{type}</span>
-      <span>·</span>
-      <span className="nova-mono">
-        {state.windowStart}–{state.windowEnd}
-      </span>
-      <span>·</span>
-      <span>wired to the live search engine</span>
-    </div>
-  );
-}
+
