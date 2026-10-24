@@ -34,6 +34,7 @@ import {
   type NativeOption,
 } from '@/lib/native-bridge';
 import { NAV_ITEMS, useRouter, type RouteInfo } from '@/lib/router';
+import { publishBuildInfo } from '@/lib/build-info';
 
 const HOST_ID = 'rbs-room-finder-host';
 
@@ -115,6 +116,12 @@ function Shell({
 
 export function App() {
   const { route, navigate } = useRouter();
+
+  // Publish the build stamp (window.__rbsBuild) and log it once, so a loaded
+  // build is always identifiable from a console check or a screenshot.
+  React.useEffect(() => {
+    publishBuildInfo();
+  }, []);
 
   // Hide the native page while Nova is mounted; always reveal on unmount so the
   // page is never left with neither UI.

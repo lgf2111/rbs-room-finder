@@ -14,6 +14,7 @@ import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
 import type { RouteInfo } from '@/lib/router';
+import { buildLabelFull } from '@/lib/build-info';
 
 export function UnmappedScreen({
   route,
@@ -35,7 +36,7 @@ export function UnmappedScreen({
         <p className="text-sm text-muted-foreground">
           Nova owns the whole RBS site, but it only has a data API for the room
           search board. This page is not mapped, so Nova will not show you
-          invented {route.kind === 'bookings' ? 'bookings' : 'data'}.
+          invented data.
         </p>
         <div
           className="w-full rounded-md border border-border bg-secondary p-3 text-left"
@@ -58,6 +59,14 @@ export function UnmappedScreen({
         <p className="text-[11px] text-muted-foreground">
           This reveals the untouched RBS page for this URL. Nothing is hidden
           from you — if Nova can&apos;t help, the real site is one click away.
+        </p>
+        {/* Build stamp (task A): the help-type routes surface the loaded build
+            so a screenshot always identifies it. */}
+        <p
+          className="nova-mono text-[10px] text-muted-foreground/70"
+          data-testid="nova-build-stamp-full"
+        >
+          {buildLabelFull()}
         </p>
       </div>
     </div>

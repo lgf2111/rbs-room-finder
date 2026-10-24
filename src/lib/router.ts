@@ -20,7 +20,19 @@ import * as React from 'react';
 /** The one path whose JSON endpoints we actually drive. */
 export const SEARCH_PATH = '/SRB001/SRB001Page';
 
-export type RouteKind = 'search' | 'bookings' | 'help' | 'unmapped';
+/**
+ * The real RBS routes, measured from the live nav. Only `search` is mapped to
+ * data; the rest render the honest unmapped screen. `unmapped` is the catch-all
+ * for any other origin path (and the deep-link fallback).
+ */
+export type RouteKind =
+  | 'dashboard'
+  | 'search'
+  | 'support-booking'
+  | 'user-guide'
+  | 'faq'
+  | 'support'
+  | 'unmapped';
 
 export interface RouteInfo {
   kind: RouteKind;
@@ -44,31 +56,80 @@ export interface NavItem {
   path: string;
 }
 
+/** The real site paths (measured from the live RBS nav). */
+export const DASHBOARD_PATH = '/DHB001/DHB001Page';
+export const SUPPORT_BOOKING_PATH = '/SPT001/SPT001Page';
+export const USER_GUIDE_PATH = '/Home/UserGuidePage';
+export const FAQ_PATH = '/Home/FAQPage';
+export const SUPPORT_PATH = '/Home/SupportPage';
+
+/** The nav items the shell renders, in the real site order. Each is a REAL
+ *  RBS path; only Search (the board) is mapped to data. */
 export const NAV_ITEMS: NavItem[] = [
-  { kind: 'search', label: 'Search', path: SEARCH_PATH },
-  { kind: 'bookings', label: 'Bookings', path: '/SRB001/MyBookings' },
-  { kind: 'help', label: 'Help', path: '/Home/Help' },
+  { kind: 'dashboard', label: 'Dashboard', path: DASHBOARD_PATH },
+  { kind: 'search', label: 'Make a New Booking', path: SEARCH_PATH },
+  { kind: 'support-booking', label: 'Support Booking', path: SUPPORT_BOOKING_PATH },
+  { kind: 'user-guide', label: 'User Guide', path: USER_GUIDE_PATH },
+  { kind: 'faq', label: 'FAQ', path: FAQ_PATH },
+  { kind: 'support', label: 'Support', path: SUPPORT_PATH },
 ];
 
-/** Classify a pathname into a route. Only the search path is "mapped". */
+/**
+ * Classify a pathname into a route. Only the search path is "mapped" (the
+ * board); every other real route renders the honest unmapped screen naming the
+ * page and the endpoint Nova does not have. `/Home/ErrorPage` and
+ * `/Account/Login` are intentionally NOT special-cased here — the mount guard
+ * (isErrorOrAuthPage) keeps Nova off those pages entirely.
+ */
 export function classifyRoute(pathname: string, search = ''): RouteInfo {
   const href = pathname + (search || '');
   if (pathname.indexOf(SEARCH_PATH) !== -1) {
-    return { kind: 'search', path: pathname, href, title: 'Room search' };
+    return { kind: 'search', path: pathname, href, title: 'Make a New Booking' };
   }
-  // Bookings is a known-but-unmapped destination: we have no bookings endpoint,
-  // so it gets an honest screen rather than fabricated reservations.
-  if (/\/MyBookings|\/Bookings/i.test(pathname)) {
+  if (pathname.indexOf(DASHBOARD_PATH) !== -1) {
     return {
-      kind: 'bookings',
+      kind: 'dashboard',
       path: pathname,
       href,
-      title: 'My bookings',
-      missingEndpoint: 'POST /SRB001/GetMyBookingList (not mapped)',
+      title: 'Dashboard',
+      missingEndpoint: `the JSON endpoint behind ${DASHBOARD_PATH} is not mapped`,
     };
   }
-  if (/\/Help/i.test(pathname)) {
-    return { kind: 'help', path: pathname, href, title: 'Help', missingEndpoint: '(static native help page)' };
+  if (pathname.indexOf(SUPPORT_BOOKING_PATH) !== -1) {
+    return {
+      kind: 'support-booking',
+      path: pathname,
+      href,
+      title: 'Support Booking',
+      missingEndpoint: `the JSON endpoint behind ${SUPPORT_BOOKING_PATH} is not mapped`,
+    };
+  }
+  if (pathname.indexOf(USER_GUIDE_PATH) !== -1) {
+    return {
+      kind: 'user-guide',
+      path: pathname,
+      href,
+      title: 'User Guide',
+      missingEndpoint: '(static native help page)',
+    };
+  }
+  if (pathname.indexOf(FAQ_PATH) !== -1) {
+    return {
+      kind: 'faq',
+      path: pathname,
+      href,
+      title: 'FAQ',
+      missingEndpoint: '(static native help page)',
+    };
+  }
+  if (pathname.indexOf(SUPPORT_PATH) !== -1) {
+    return {
+      kind: 'support',
+      path: pathname,
+      href,
+      title: 'Support',
+      missingEndpoint: '(static native help page)',
+    };
   }
   // Anything else on the origin: honest unmapped screen naming the path.
   return {

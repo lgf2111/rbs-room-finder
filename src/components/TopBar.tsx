@@ -27,6 +27,7 @@ import {
   nudgeNativeControl,
   type Diagnostics,
 } from '@/lib/option-discovery';
+import { buildLabel } from '@/lib/build-info';
 
 import type { BoardForm } from '@/lib/native-bridge';
 
@@ -525,6 +526,15 @@ export function TopBar({ onForm, onForceReload, statusLine, searchRef }: TopBarP
         </span>
         <span aria-hidden>·</span>
         {statusLine}
+        {/* Build stamp in the status-bar corner so the loaded build is always
+            identifiable (task A). */}
+        <span
+          className="nova-mono ml-auto text-muted-foreground/70"
+          data-testid="nova-build-stamp"
+          title="Loaded Nova build"
+        >
+          {buildLabel()}
+        </span>
       </div>
     </div>
   );
