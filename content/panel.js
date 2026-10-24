@@ -85,6 +85,40 @@
     return node;
   }
 
+  // Merge select options preserving current selection
+  function mergeSelectOptions(existingOptions, newOptions, currentValue) {
+    // existingOptions: array of current option values
+    // newOptions: array of new option values
+    // currentValue: currently selected value
+    
+    // If current value exists in new options, keep it
+    if (newOptions.includes(currentValue)) {
+      return { options: newOptions, value: currentValue };
+    }
+    
+    // Otherwise fall back to appropriate default
+    if (currentValue === '') {
+      // "All rooms" or empty - keep empty if available, otherwise first
+      return { options: newOptions, value: '' };
+    } else {
+      // Specific value no longer available - fall back to first option
+      return { options: newOptions, value: newOptions.length > 0 ? newOptions[0] : '' };
+    }
+  }
+
+  // Debounce helper
+  function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  }
+
   // Read option TEXTs from a native <select>, skipping placeholders.
   function readOptionTexts(id) {
     const sel = document.getElementById(id);
@@ -130,8 +164,51 @@
     return match ? match[1] : text.split(' ')[0];
   }
 
+  // Update room type and window selects based on current building
+  function updateTypeAndWindowSelects(typeSelect, startSelect, endSelect) {
+    if (!typeSelect || !startSelect || !endSelect) return;
+    
+    // Read fresh room types and window options
+    const roomTypes = readRoomTypes();
+    const windowOpts = readWindowOptions();
+    
+    // Update room type select
+    const currentTypeValue = typeSelect.value;
+    const existingTypeOptions = Array.from(typeSelect.options).map(opt => opt.value);
+    const typeResult = mergeSelectOptions(existingTypeOptions, roomTypes, currentTypeValue);
+    
+    typeSelect.innerHTML = '';
+    typeSelect.appendChild(el('option', { value: '', text: 'All rooms' }));
+    for (const t of typeResult.options) {
+      typeSelect.appendChild(el('option', { value: t, text: t }));
+    }
+    typeSelect.value = typeResult.value;
+    
+    // Update window start select
+    const currentStartValue = startSelect.value;
+    const existingStartOptions = Array.from(startSelect.options).map(opt => opt.value);
+    const startResult = mergeSelectOptions(existingStartOptions, windowOpts.from, currentStartValue);
+    
+    startSelect.innerHTML = '';
+    for (const t of startResult.options) {
+      startSelect.appendChild(el('option', { value: t, text: t }));
+    }
+    startSelect.value = startResult.value;
+    
+    // Update window end select
+    const currentEndValue = endSelect.value;
+    const existingEndOptions = Array.from(endSelect.options).map(opt => opt.value);
+    const endResult = mergeSelectOptions(existingEndOptions, windowOpts.to, currentEndValue);
+    
+    endSelect.innerHTML = '';
+    for (const t of endResult.options) {
+      endSelect.appendChild(el('option', { value: t, text: t }));
+    }
+    endSelect.value = endResult.value;
+  }
+
   // Populate building select from the live cascade
-  async function populateBuildingSelect(buildingSelect) {
+  async function populateBuildingSelect(buildingSelect, typeSelect, startSelect, endSelect) {
     const nativeBuildingSelect = document.getElementById(RBS_CONTROL_IDS.building);
     if (!nativeBuildingSelect) {
       buildingSelect.disabled = true;
@@ -156,6 +233,11 @@
         }));
       });
       buildingSelect.disabled = false;
+      
+      // Update room type and window selects since building is now populated
+      if (typeSelect && startSelect && endSelect) {
+        updateTypeAndWindowSelects(typeSelect, startSelect, endSelect);
+      }
     } else {
       // Building select is empty - need to trigger cascade
       buildingSelect.disabled = true;
@@ -191,6 +273,11 @@
               }));
             });
             buildingSelect.disabled = false;
+            
+            // Update room type and window selects since building is now populated
+            if (typeSelect && startSelect && endSelect) {
+              updateTypeAndWindowSelects(typeSelect, startSelect, endSelect);
+            }
           }
         }
       }
@@ -440,7 +527,7 @@
     if (!uiRefs) return;
     
     // Refresh button
-    uiRefs.refreshBtn.addEventListener('click', onLoadBoard);
+    uiRefs.refreshBtn.addEventListener('click', () => requestReload('refresh'));
     
     // Native UI toggle button
     uiRefs.nativeBtn.addEventListener('click', () => {
@@ -453,15 +540,43 @@
       }
     });
     
-    // Date chips selection
+    // Date chips selection - write date to form and reload
     uiRefs.dateChips.querySelectorAll('.rbs-date-chip').forEach(chip => {
       chip.addEventListener('click', () => {
         uiRefs.dateChips.querySelectorAll('.rbs-date-chip').forEach(c => 
           c.classList.remove('rbs-selected')
         );
         chip.classList.add('rbs-selected');
+        requestReload('date');
       });
     });
+    
+    // Building select - immediate reload when changed
+    uiRefs.buildingSelect.addEventListener('change', () => {
+      // Update room types and window options based on new building
+      updateTypeAndWindowSelects(uiRefs.typeSelect, uiRefs.startSelect, uiRefs.endSelect);
+      requestReload('building');
+    });
+    
+    // Room type select - immediate reload
+    uiRefs.typeSelect.addEventListener('change', () => requestReload('type'));
+    
+    // Window start select - immediate reload
+    uiRefs.startSelect.addEventListener('change', () => requestReload('window-start'));
+    
+    // Window end select - immediate reload
+    uiRefs.endSelect.addEventListener('change', () => requestReload('window-end'));
+    
+    // Sort select - immediate reload
+    uiRefs.sortSelect.addEventListener('change', () => requestReload('sort'));
+    
+    // Capacity input - debounced reload
+    const debouncedCapacityReload = debounce(() => requestReload('capacity'), 300);
+    uiRefs.capInput.addEventListener('input', debouncedCapacityReload);
+    
+    // Search input - debounced reload
+    const debouncedSearchReload = debounce(() => requestReload('search'), 300);
+    uiRefs.searchInput.addEventListener('input', debouncedSearchReload);
   }
 
   // ---- board ----------------------------------------------------------------
@@ -1090,6 +1205,128 @@
     if (form.sort) currentUI.sortSelect.value = form.sort;
   }
 
+  // ---- reload coordination -------------------------------------------------
+
+  let reloadInProgress = false;
+  let queuedReload = false;
+
+  function requestReload(reason) {
+    console.log('requestReload:', reason);
+    
+    // If a reload is already in progress, queue another one
+    if (reloadInProgress) {
+      queuedReload = true;
+      return;
+    }
+    
+    // Start reload
+    reloadInProgress = true;
+    
+    // Disable controls during reload
+    disableControls(true);
+    
+    // Show loading status
+    updateStatusBarLoading();
+    
+    // Execute the load
+    onLoadBoard().finally(() => {
+      reloadInProgress = false;
+      disableControls(false);
+      
+      // If another reload was queued while we were loading, run it now
+      if (queuedReload) {
+        queuedReload = false;
+        setTimeout(() => requestReload('queued'), 50);
+      }
+    });
+  }
+
+  function disableControls(disabled) {
+    if (!ui) return;
+    
+    const controls = [
+      ui.buildingSelect,
+      ui.typeSelect,
+      ui.capInput,
+      ui.searchInput,
+      ui.startSelect,
+      ui.endSelect,
+      ui.sortSelect,
+      ui.refreshBtn
+    ];
+    
+    controls.forEach(control => {
+      if (control) control.disabled = disabled;
+    });
+    
+    // Also disable date chips
+    if (ui.dateChips) {
+      ui.dateChips.querySelectorAll('.rbs-date-chip').forEach(chip => {
+        chip.style.pointerEvents = disabled ? 'none' : '';
+        chip.style.opacity = disabled ? '0.5' : '';
+      });
+    }
+  }
+
+  function updateStatusBarLoading() {
+    if (!ui || !ui.stats) return;
+    
+    const statsEl = ui.stats.querySelector('#rbs-stats-text');
+    if (statsEl) {
+      statsEl.textContent = 'Loading…';
+    }
+    
+    // Clear any previous error
+    const errorEl = ui.errorIndicator?.querySelector('#rbs-error-text');
+    if (errorEl) {
+      errorEl.textContent = '';
+      ui.errorIndicator.style.display = 'none';
+    }
+  }
+
+  function showError(message) {
+    if (!ui || !ui.errorIndicator) return;
+    
+    const errorEl = ui.errorIndicator.querySelector('#rbs-error-text');
+    if (errorEl) {
+      errorEl.textContent = message;
+      ui.errorIndicator.style.display = 'flex';
+    }
+    
+    // Update stats to show error
+    const statsEl = ui.stats?.querySelector('#rbs-stats-text');
+    if (statsEl) {
+      statsEl.textContent = 'Error';
+    }
+  }
+
+  function showEmptyState(message) {
+    if (!ui) return;
+    
+    // Clear the board
+    if (ui.boardRows) {
+      ui.boardRows.innerHTML = '';
+    }
+    
+    // Show message in stats
+    const statsEl = ui.stats?.querySelector('#rbs-stats-text');
+    if (statsEl) {
+      statsEl.textContent = message;
+    }
+    
+    // Clear any error
+    const errorEl = ui.errorIndicator?.querySelector('#rbs-error-text');
+    if (errorEl) {
+      errorEl.textContent = '';
+      ui.errorIndicator.style.display = 'none';
+    }
+    
+    // Update board state
+    board.blocks = new Map();
+    board.loadedCount = 0;
+    board.totalCount = 0;
+  }
+
   // ---- main Load board flow ------------------------------------------------
 
   async function onLoadBoard() {
@@ -1113,7 +1350,7 @@
     const sMin = timeToMinutes(form.window.start);
     const eMin = timeToMinutes(form.window.end);
     if (isNaN(sMin) || isNaN(eMin) || eMin <= sMin) {
-      // TODO: show error
+      showError('Invalid time window');
       return;
     }
 
@@ -1134,7 +1371,7 @@
     try {
       rooms = await fetchRooms(form);
     } catch (e) {
-      // TODO: show error
+      showError(`Failed to load rooms: ${e.message}`);
       return;
     }
 
@@ -1147,7 +1384,7 @@
     const ordered = sortRooms(filtered, form.sort);
     
     if (ordered.length === 0) {
-      // TODO: show no rooms message
+      showEmptyState('no rooms match these filters — try All rooms');
       return;
     }
 
@@ -1246,8 +1483,23 @@
       // Hide native UI only AFTER self-check passes and UI is assigned
       hideNativeUI();
       
-      // Populate building select asynchronously
-      populateBuildingSelect(ui.buildingSelect).catch(err => {
+      // Populate building select asynchronously, which will also update room types and window options
+      populateBuildingSelect(ui.buildingSelect, ui.typeSelect, ui.startSelect, ui.endSelect).then(() => {
+        // After building select is populated and room types/window options are updated,
+        // trigger initial load if all required fields are available
+        if (ui.buildingSelect.disabled === false) {
+          // Check if we have valid form values
+          const hasBuilding = ui.buildingSelect.value !== '';
+          const hasDate = ui.dateChips.querySelector('.rbs-date-chip.rbs-selected') !== null;
+          const hasStart = ui.startSelect.value && ui.startSelect.options.length > 0;
+          const hasEnd = ui.endSelect.value && ui.endSelect.options.length > 0;
+          
+          if (hasBuilding || hasDate || (hasStart && hasEnd)) {
+            // Use a small delay to ensure UI is fully ready
+            setTimeout(() => requestReload('initial'), 100);
+          }
+        }
+      }).catch(err => {
         console.warn('Failed to populate building select:', err);
       });
       

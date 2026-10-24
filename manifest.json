@@ -3,17 +3,29 @@
   "name": "RBS Room Finder",
   "version": "1.0.0",
   "description": "A modern search UI for SIT's room booking system (RBS). Drives the native WebForms search and never books anything by itself.",
-  "permissions": ["storage"],
-  "host_permissions": ["https://rbs.singaporetech.edu.sg/*"],
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://rbs.singaporetech.edu.sg/*"
+  ],
   "action": {
     "default_title": "RBS Room Finder",
     "default_popup": "popup/popup.html"
   },
   "content_scripts": [
     {
-      "matches": ["https://rbs.singaporetech.edu.sg/*"],
-      "js": ["content/native.js", "content/panel.js"],
-      "css": ["content/panel.css"],
+      "matches": [
+        "https://rbs.singaporetech.edu.sg/*"
+      ],
+      "js": [
+        "vendor/shoelace.bundle.js",
+        "content/native.js",
+        "content/panel.js"
+      ],
+      "css": [
+        "content/panel.css"
+      ],
       "run_at": "document_idle"
     }
   ]

@@ -1,2 +1,5 @@
 .agents/
 .DS_Store
+
+vendor/
+scripts/
