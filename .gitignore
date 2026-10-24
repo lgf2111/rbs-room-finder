@@ -1,5 +1,13 @@
 .agents/
 .DS_Store
 
+node_modules/
+
 vendor/
-scripts/
+
+# Ignore scripts/ contents but keep the committed nova build script.
+scripts/*
+!scripts/build.mjs
+
+# throwaway build intermediates
+src/styles/tailwind.out.css

@@ -1,0 +1,30 @@
+{
+  "name": "rbs-room-finder-nova",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Phase 1 React + shadcn/ui top bar for RBS Room Finder, bundled to a classic IIFE for an MV3 content script.",
+  "license": "MIT",
+  "scripts": {
+    "build:css": "tailwindcss -c tailwind.config.js -i src/styles/tailwind.css -o src/styles/tailwind.out.css --minify",
+    "build:js": "node scripts/build.mjs",
+    "build": "npm run build:css && npm run build:js"
+  },
+  "devDependencies": {
+    "autoprefixer": "10.4.20",
+    "esbuild": "0.24.2",
+    "postcss": "8.4.49",
+    "tailwindcss": "3.4.17"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "1.1.6",
+    "@radix-ui/react-popover": "1.1.6",
+    "@radix-ui/react-select": "2.1.6",
+    "@radix-ui/react-slot": "1.1.2",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "lucide-react": "0.469.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "tailwind-merge": "2.6.0"
+  }
+}

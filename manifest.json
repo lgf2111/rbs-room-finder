@@ -20,7 +20,8 @@
       ],
       "js": [
         "content/native.js",
-        "content/panel.js"
+        "content/panel.js",
+        "content/nova.bundle.js"
       ],
       "css": [
         "content/panel.css"
