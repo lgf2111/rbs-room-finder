@@ -26,8 +26,8 @@
     --rbs-primary-text: #e6e8eb;
     --rbs-muted: #8b9199;
     --rbs-accent: #c8102e; /* SIT red */
-    --rbs-free: #3fb950;
-    --rbs-taken: #7f2d2d;
+    --rbs-free: #2dd4bf;
+    --rbs-taken: #b45309;
     --rbs-closed: #2a2d33;
     --rbs-font: -apple-system, "Segoe UI", system-ui, sans-serif;
     --rbs-font-mono: ui-monospace, "SF Mono", Monaco, "Cascadia Mono", monospace;
@@ -36,7 +36,7 @@
     --rbs-radius: 8px;
     --rbs-cell-size: 32px;
     --rbs-hour-height: 40px;
-    --rbs-row-height: 32px;
+    --rbs-row-height: 34px;
     --rbs-topbar-height: 64px;
     --rbs-status-height: 24px;
     
@@ -342,6 +342,32 @@
     flex-direction: column;
   }
   
+  .rbs-board-row.rbs-row-odd .rbs-room-info {
+    background: rgba(255, 255, 255, 0.04);
+  }
+  
+  .rbs-board-row.rbs-row-odd .rbs-slot-cell.rbs-unknown,
+  .rbs-board-row.rbs-row-odd .rbs-slot-cell.rbs-closed {
+    background-color: rgba(255, 255, 255, 0.035);
+  }
+  
+  .rbs-board-row.rbs-row-odd .rbs-slot-cell.rbs-free {
+    box-shadow: inset 0 0 0 999px rgba(255, 255, 255, 0.05);
+  }
+  
+  .rbs-board-row.rbs-row-odd .rbs-slot-cell.rbs-taken {
+    box-shadow: inset 0 0 0 999px rgba(0, 0, 0, 0.12);
+  }
+  
+  .rbs-board-row:hover .rbs-room-info {
+    background: rgba(255, 255, 255, 0.06);
+  }
+  
+  .rbs-slot-cell:hover {
+    outline: 1px solid var(--rbs-accent);
+    outline-offset: -1px;
+  }
+  
   .rbs-board-row {
     height: var(--rbs-row-height);
     display: grid;
@@ -352,8 +378,10 @@
   .rbs-room-info {
     display: flex;
     align-items: center;
-    padding: 0 12px;
-    gap: 8px;
+    padding: 0 10px;
+    gap: 6px;
+    min-width: 0;
+    overflow: hidden;
     font-size: 12px;
     border-right: 1px solid var(--rbs-border);
   }
@@ -361,15 +389,20 @@
   .rbs-room-code {
     font-family: var(--rbs-font-mono);
     color: var(--rbs-primary-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    line-height: 1.1;
   }
   
   .rbs-room-type {
     color: var(--rbs-muted);
-    font-size: 11px;
+    font-size: 10px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 200px;
+    max-width: 110px;
   }
   
   .rbs-room-cap {
@@ -400,10 +433,16 @@
   
   .rbs-slot-cell.rbs-free {
     background: var(--rbs-free);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
   }
   
   .rbs-slot-cell.rbs-taken {
-    background: var(--rbs-taken);
+    background-color: var(--rbs-taken);
+    background-image: repeating-linear-gradient(
+      45deg,
+      rgba(0, 0, 0, 0.28) 0 3px,
+      transparent 3px 6px
+    );
   }
   
   .rbs-slot-cell.rbs-unknown {
@@ -497,6 +536,27 @@
   
   .rbs-legend-dot.rbs-closed-dot {
     background-color: var(--rbs-closed);
+    border: 1px solid var(--rbs-border);
+  }
+  
+  .rbs-legend-swatch {
+    width: 14px;
+    height: 10px;
+    border-radius: 2px;
+    display: inline-block;
+  }
+  
+  .rbs-legend-swatch.rbs-free-swatch {
+    background: var(--rbs-free);
+  }
+  
+  .rbs-legend-swatch.rbs-taken-swatch {
+    background-color: var(--rbs-taken);
+    background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.28) 0 3px, transparent 3px 6px);
+  }
+  
+  .rbs-legend-swatch.rbs-closed-swatch {
+    background: var(--rbs-closed);
     border: 1px solid var(--rbs-border);
   }
   
@@ -1196,11 +1256,11 @@
     
     // Legend
     const legend = el('div', { class: 'rbs-legend' }, [
-      el('span', { class: 'rbs-legend-dot rbs-free-dot' }),
+      el('span', { class: 'rbs-legend-swatch rbs-free-swatch' }),
       el('span', { text: 'Free' }),
-      el('span', { class: 'rbs-legend-dot rbs-taken-dot', style: 'margin-left: 8px' }),
+      el('span', { class: 'rbs-legend-swatch rbs-taken-swatch', style: 'margin-left: 10px' }),
       el('span', { text: 'Booked' }),
-      el('span', { class: 'rbs-legend-dot rbs-closed-dot', style: 'margin-left: 8px' }),
+      el('span', { class: 'rbs-legend-swatch rbs-closed-swatch', style: 'margin-left: 10px' }),
       el('span', { text: 'Not open' })
     ]);
     topbar.appendChild(legend);
@@ -1394,7 +1454,7 @@
 
   function buildRoomRow(room) {
     const row = el('div', {
-      class: 'rbs-board-row',
+      class: 'rbs-board-row' + ((board.rowIndex++ % 2) ? ' rbs-row-odd' : ''),
       'data-rsrcid': room.id
     });
     
@@ -1424,6 +1484,7 @@
   }
 
   function renderBoardSkeleton(rooms) {
+    board.rowIndex = 0;
     const currentUI = getUI();
     currentUI.boardRows.innerHTML = '';
     
@@ -1461,6 +1522,7 @@
     blocks: new Map(), // roomId -> { rowEl, cellsEl, cells, loaded, failed }
     observer: null, // IntersectionObserver for viewport prioritisation
     generation: 0,
+    rowIndex: 0,
     loadedCount: 0,
     totalCount: 0,
     failedCount: 0,

@@ -298,8 +298,10 @@
 .rbs-room-info {
   display: flex;
   align-items: center;
-  padding: 0 12px;
-  gap: 8px;
+  padding: 0 10px;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
   font-size: 12px;
   border-right: 1px solid var(--rbs-border);
 }
@@ -307,6 +309,11 @@
 .rbs-room-code {
   font-family: var(--rbs-font-mono);
   color: var(--rbs-primary-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  line-height: 1.1;
 }
 
 .rbs-room-type {
